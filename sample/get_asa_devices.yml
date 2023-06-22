@@ -1,0 +1,17 @@
+---
+- name: Get ASA device inventory details
+  hosts: localhost
+  tasks:
+    - name: Get cdo inventory
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        action: 'list'
+      register: myoutput
+
+    - name: Query Results for desired data
+      ansible.builtin.debug:
+        msg:
+          "{{ myoutput | community.general.json_query(jmesquery) }}"
+      vars:
+        jmesquery: "result.*.object[].{name: name, serial:serial, softwareVersion: softwareVersion, type:type, deviceType:deviceType, uid:uid, ipv4:ipv4}"
