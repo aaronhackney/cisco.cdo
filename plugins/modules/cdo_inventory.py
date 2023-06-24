@@ -16,11 +16,6 @@ fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
 
-def normalize_data(data: any) -> any:
-    if isinstance(data, dict):
-        pass
-
-
 def cdo_get_inventory(module: AnsibleModule, http_session: requests.session, filter: str = None,
                       limit: int = 50, offset: int = 0) -> str:
     """ Get CDO inventory """

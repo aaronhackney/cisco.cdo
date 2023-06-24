@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import requests
-from json import dumps
 from enum import Enum
 
 
@@ -20,10 +19,6 @@ class CDORegions(Enum):
 
 
 class CDORequests:
-    @staticmethod
-    def req_headers(token: str) -> dict:
-        return {"Authorization": f"Bearer {token.strip()}", "Accept": "application/json"}
-
     @staticmethod
     def create_session(token: str) -> str:
         """Helper function to set the auth token and accept headers in the API request"""
