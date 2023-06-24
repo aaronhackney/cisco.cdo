@@ -1,29 +1,38 @@
 #!/usr/bin/python
-
 import requests
+import urllib.parse
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_common import CDORegions, CDORequests
+from ansible_collections.cisco.cdo.plugins.module_utils.cdo_api_endpoints import CDOAPI
+from ansible_collections.cisco.cdo.plugins.module_utils.cdo_query import CDOQuery
+
+import logging
+
+# Remove for publishing....
+logger = logging.getLogger('cdo_inventory')
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler('/tmp/cdo_inventory.log')
+fh.setLevel(logging.DEBUG)
+logger.addHandler(fh)
 
 
-def create_session(token) -> str:
-    """Helper function to set the auth token and accept headers in the API request"""
-    http_session = requests.Session()
-    http_session.headers["Authorization"] = f"Bearer {token.strip()}"
-    http_session.headers["Accept"] = "application/json"
-    http_session.headers["Content-Type"] = "application/json;charset=utf-8"
-    return http_session
+def normalize_data(data: any) -> any:
+    if isinstance(data, dict):
+        pass
 
 
-def cdo_get_inventory(data, http_session):
-    # TODO: Add error handling
-    # This string only returns ASAs
-
-    # All devices....
-    path = "aegis/rest/v1/services/targets/devices?limit=50&offset=0&q=%28model%3Afalse%29+AND+%28NOT+deviceType%3AFMCE%29&resolve=%5Btargets%2Fdevices.%7Bname%2CcustomLinks%2ChealthStatus%2CsseDeviceRegistrationToken%2CsseDeviceSerialNumberRegistration%2CsseEnabled%2CsseDeviceData%2Cstate%2CignoreCertificate%2CdeviceType%2CconfigState%2CconfigProcessingState%2Cmodel%2Cipv4%2CmodelNumber%2Cserial%2CchassisSerial%2ChasFirepower%2CconnectivityState%2CconnectivityError%2Ccertificate%2CmostRecentCertificate%2Ctags%2CtagKeys%2Ctype%2CassociatedDeviceUid%2CoobDetectionState%2CenableOobDetection%2CdeviceActivity%2CsoftwareVersion%2ClastErrorMap%2CstateMachineDetails%2Cdisks%2CautoAcceptOobEnabled%2CoobCheckInterval%2ClarUid%2ClarType%2Cmetadata%2CfmcApplianceIpv4%2ClastDeployTimestamp%7D%2Cfirepower%2Fftds.%7Bstatus%2ChealthStatus%2Cstate%2CstateMachineDetails%2CftdHaMetadata%2CsupportedFeatures%2CprimaryFtdHaStatus%2CsecondaryFtdHaStatus%2CftdHaError%2CprimaryDeviceDetails%2CsecondaryDeviceDetails%2CisHaCombinedDevice%2CsecurityDbsSyncSchedule%2CautomaticSecurityDbUpdatesEnabled%2CsmartLicense%2CisClusterCombinedDevice%2CclusterControlNodeDeviceDetails%2CclusterDataNodesDeviceDetails%7D%2Cfmc%2Fappliance.%7Bstatus%2Cstate%2CstateMachineDetails%7D%2Cfmc%2Ffmc-managed-device.%7BdeviceModel%2CdeviceSubType%2CfmcApplianceName%2CfmcApplianceIpv4%2ChealthStatus%2Csw_version%2CanalyticsOnly%7D%2Cwsa%2Fwsas.%7Bstatus%2Cstate%2CstateMachineDetails%7D%2Cmeraki%2Fmxs.%7Bstatus%2Cstate%2CstateMachineDetails%2CphysicalDevices%2CboundDevices%2Cnetwork%7D%5D&sort=name%3Aasc"
-    result = http_session.get(
-        url=f"https://{CDORegions.get_endpoint('us')}/{path}", headers=http_session.headers)
-    if result.text:
-        return result.json()
+def cdo_get_inventory(module: AnsibleModule, http_session: requests.session, filter: str = None,
+                      limit: int = 50, offset: int = 0) -> str:
+    """ Get CDO inventory """
+    # TODO: get return specific device info instead of device info
+    # TODO: filter on device name
+    # TODO: Support paging
+    endpoint = CDORegions.get_endpoint(module.params.get('region'))
+    query = CDOQuery.get_inventory_query(device_type=module.params.get('device_type'))
+    q = urllib.parse.quote_plus(query['q'])
+    r = urllib.parse.quote_plus(query['r'])
+    path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
+    return CDORequests.get(http_session, url=f"https://{endpoint}", path=path)
 
 
 def cdo_add_inventory(data, http_session):
@@ -66,15 +75,26 @@ def main():
     # Instantiate the module actions
     module = AnsibleModule(argument_spec=fields)
 
+    # Build the return data structure
+    result = dict(
+        msg='',
+        stdout='',
+        stdout_lines=[],
+        stderr='',
+        stderr_lines=[],
+        rc=0,
+        failed=False,
+        changed=False
+    )
+
     # Create the common HTTP Headers
-    http_session = create_session(module.params['api_key'])
+    http_session = CDORequests.create_session(module.params.get('api_key'))
 
     # Execute the function based on the action and pass the input parameters
-    api_result = action.get(
-        module.params['action'])(module.params, http_session)
+    api_result = action.get(module.params.get('action'))(module, http_session)
 
-    # Return the results
-    module.exit_json(**api_result)
+    result['stdout'] = api_result
+    module.exit_json(**result)
 
 
 if __name__ == '__main__':

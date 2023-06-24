@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import requests
-import json
+from json import dumps
 from enum import Enum
 
 
@@ -22,15 +22,22 @@ class CDORegions(Enum):
 class CDORequests:
     @staticmethod
     def req_headers(token: str) -> dict:
-        return {"Authorization": f"Bearer {token.strip()}", "Accept": "application/json", "Content-Type": "application/json;charset=utf-8"}
+        return {"Authorization": f"Bearer {token.strip()}", "Accept": "application/json"}
+
+    @staticmethod
+    def create_session(token: str) -> str:
+        """Helper function to set the auth token and accept headers in the API request"""
+        http_session = requests.Session()
+        http_session.headers = {"Authorization": f"Bearer {token.strip()}", "Accept": "application/json",
+                                "Content-Type": "application/json;charset=utf-8"}
+        return http_session
 
     # TODO: HTTP Error Catching Wrapper
     @staticmethod
-    def get(url: str, headers: dict, path: str = None, query: dict = None) -> str:
+    def get(http_session: requests.Session, url: str, path: str = None, query: dict = None) -> str:
         """ Given the CDO endpoint, path, and query, return the json payload from the API """
         uri = url if path is None else f"{url}/{path}"
-        result = requests.get(
-            url=f"https://{uri}", headers=headers, params=query)
+        result = http_session.get(url=uri, headers=http_session.headers, params=query)
         if result.text:
             return result.json()
 
