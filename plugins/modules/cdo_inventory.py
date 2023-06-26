@@ -20,6 +20,7 @@ def cdo_get_specific_device(module: AnsibleModule, http_session: requests.sessio
     # TODO: Should we get uid as fcn parameter or always as params.get ?
     """ Given a device uid, retreive the device specific details """
     path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', module.params.get('uid'), 1)
+    logger.debug(path)
     return CDORequests.get(http_session, url=f"https://{endpoint}", path=path)
 
 
