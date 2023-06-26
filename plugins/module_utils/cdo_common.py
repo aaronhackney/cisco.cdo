@@ -5,6 +5,13 @@ __metaclass__ = type
 import requests
 from enum import Enum
 
+# Remove for publishing....
+import logging
+logger = logging.getLogger('cdo_inventory')
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler('/tmp/cdo_inventory.log')
+fh.setLevel(logging.DEBUG)
+logger.addHandler(fh)
 
 class CDORegions(Enum):
     """ CDO API Endpoints by Region"""
@@ -33,6 +40,9 @@ class CDORequests:
         """ Given the CDO endpoint, path, and query, return the json payload from the API """
         uri = url if path is None else f"{url}/{path}"
         result = http_session.get(url=uri, headers=http_session.headers, params=query)
+        logger.debug(result.status_code)
+        logger.debug(result.text)
+
         if result.text:
             return result.json()
 

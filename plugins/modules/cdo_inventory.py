@@ -6,9 +6,9 @@ from ansible_collections.cisco.cdo.plugins.module_utils.cdo_common import CDOReg
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_query import CDOQuery
 
-import logging
 
 # Remove for publishing....
+import logging
 logger = logging.getLogger('cdo_inventory')
 logger.setLevel(logging.DEBUG)
 fh = logging.FileHandler('/tmp/cdo_inventory.log')
@@ -16,14 +16,18 @@ fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
 
-def cdo_get_inventory(module: AnsibleModule, http_session: requests.session, filter: str = None,
-                      limit: int = 50, offset: int = 0) -> str:
+def cdo_get_specific_device(module: AnsibleModule, http_session: requests.session, endpoint: str) -> str:
+    # TODO: Should we get uid as fcn parameter or always as params.get ?
+    """ Given a device uid, retreive the device specific details """
+    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', module.params.get('uid'), 1)
+    return CDORequests.get(http_session, url=f"https://{endpoint}", path=path)
+
+
+def cdo_get_inventory_summary(module: AnsibleModule, http_session: requests.session, endpoint: str, filter: str = None,
+                              limit: int = 50, offset: int = 0) -> str:
     """ Get CDO inventory """
-    # TODO: get return specific device info instead of device info
-    # TODO: filter on device name
     # TODO: Support paging
-    endpoint = CDORegions.get_endpoint(module.params.get('region'))
-    query = CDOQuery.get_inventory_query(device_type=module.params.get('device_type'))
+    query = CDOQuery.get_inventory_query(module)
     q = urllib.parse.quote_plus(query['q'])
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
@@ -49,26 +53,37 @@ def main():
             "type": 'str'
         },
         "device_type": {
-            "default": "all",  # Get all devices in inventory
+            "default": "all",
             "choices": ['asa', 'ftd', 'ios', 'meraki', 'all'],
             "type": 'str'
         },
         "action": {
-            "default": "list",  # default scalar value
-            "choices": ['list', 'add', 'remove'],  # valid input parameters
-            "type": 'str'  # type
+            "default": "list",
+            "choices": ['specific_device', 'list', 'add', 'remove'],
+            "type": 'str'
+        },
+        "filter": {
+            "default": "",
+            "type": 'str'
+        },
+        "uid": {
+            "default": "",
+            "type": 'str'
         },
     }
 
     # based on the value of the "state" parameter, run the given function
     action = {
-        "list": cdo_get_inventory,
+        "specific_device": cdo_get_specific_device,
+        "list": cdo_get_inventory_summary,
         "add": cdo_add_inventory,
         "remove": cdo_remove_inventory
     }
 
     # Instantiate the module actions
     module = AnsibleModule(argument_spec=fields)
+    # The API endpoint we will hit based on region
+    endpoint = CDORegions.get_endpoint(module.params.get('region'))
 
     # Build the return data structure
     result = dict(
@@ -86,7 +101,7 @@ def main():
     http_session = CDORequests.create_session(module.params.get('api_key'))
 
     # Execute the function based on the action and pass the input parameters
-    api_result = action.get(module.params.get('action'))(module, http_session)
+    api_result = action.get(module.params.get('action'))(module, http_session, endpoint)
 
     result['stdout'] = api_result
     module.exit_json(**result)
