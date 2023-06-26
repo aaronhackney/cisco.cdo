@@ -2,16 +2,36 @@
 - name: Get ASA device inventory details
   hosts: localhost
   tasks:
+    - name: Get specific device
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        action: 'specific_device'
+        uid: 'c6c75297-e6a7-425a-bce2-7ba224c90559'
+      register: specific_device
+
+    - name: Print Results for specific device
+      ansible.builtin.debug:
+        msg:
+          "{{ specific_device.stdout }}"
+
     - name: Get cdo inventory
       cisco.cdo.cdo_inventory:
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
         region: 'us'
         action: 'list'
-      register: myoutput
+      register: cdo_inventory
 
-    - name: Query Results for desired data
+    - name: Print Results for all devices, all fields
       ansible.builtin.debug:
         msg:
-          "{{ myoutput | community.general.json_query(jmesquery) }}"
+          "{{ cdo_inventory.stdout }}"
+
+    - name: Filter Results for desired data using json query
+      ansible.builtin.debug:
+        msg:
+          "{{ cdo_inventory.stdout | community.general.json_query(jmesquery) }}"
       vars:
-        jmesquery: "result.*.object[].{name: name, serial:serial, softwareVersion: softwareVersion, type:type, deviceType:deviceType, uid:uid, ipv4:ipv4}"
+        jmesquery: >-
+          [*].{name: name, serial:serial, chassisSerial:chassisSerial, softwareVersion: softwareVersion, type:type,
+          deviceType:deviceType, uid:uid, ipv4:ipv4, port:port, ignoreCertificate:ignoreCertificate}
