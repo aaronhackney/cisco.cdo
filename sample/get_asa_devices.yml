@@ -2,24 +2,10 @@
 - name: Get ASA device inventory details
   hosts: localhost
   tasks:
-    - name: Get specific device
-      cisco.cdo.cdo_inventory:
-        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
-        region: 'us'
-        action: 'specific_device'
-        uid: 'c6c75297-e6a7-425a-bce2-7ba224c90559'
-      register: specific_device
-
-    - name: Print Results for specific device
-      ansible.builtin.debug:
-        msg:
-          "{{ specific_device.stdout }}"
 
     - name: Get cdo inventory
       cisco.cdo.cdo_inventory:
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
-        region: 'us'
-        action: 'list'
       register: cdo_inventory
 
     - name: Print Results for all devices, all fields
@@ -35,3 +21,16 @@
         jmesquery: >-
           [*].{name: name, serial:serial, chassisSerial:chassisSerial, softwareVersion: softwareVersion, type:type,
           deviceType:deviceType, uid:uid, ipv4:ipv4, port:port, ignoreCertificate:ignoreCertificate}
+
+    - name: Get specific device
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        action: 'specific_device'
+        uid: 'c6c75297-e6a7-425a-bce2-7ba224c90559'
+      register: specific_device
+
+    - name: Print Results for specific device
+      ansible.builtin.debug:
+        msg:
+          "{{ specific_device.stdout }}"

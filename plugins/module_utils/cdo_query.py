@@ -4,7 +4,7 @@ from ansible.module_utils.basic import AnsibleModule
 class CDOQuery:
     """ Helpers for building complex inventory queries"""
     @staticmethod
-    def get_inventory_query(module: AnsibleModule = None) -> dict:
+    def get_inventory_query(module: AnsibleModule) -> dict:
         """ Build the inventory query based on what the user is looking for"""
         device_type = module.params.get('device_type')
         filter = module.params.get('filter')
@@ -34,3 +34,9 @@ class CDOQuery:
         #    r = r[0:-1] + ",meraki/mxs.{status,state,physicalDevices,boundDevices,network}" + r[-1:]
 
         return {"q": q, "r": r}
+
+    @staticmethod
+    def get_lar_query(module: AnsibleModule) -> str | None:
+        filter = module.params.get('sdc')
+        if filter is not None:
+            return f"name:*{filter}* OR ipv4:*{filter}*"
