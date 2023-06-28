@@ -86,10 +86,10 @@ def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str
     logger.debug(f"device {device}")
     if status_code not in range(200, 300):
         # TODO: Fail with custom error message
-        # TODO: Fail with custom error message
         return
 
     if not connectivity_poll(http_session, f"https://{endpoint}", device["uid"], retry=module.params.get('retry'), delay=module.params.get('delay')):
+        # TODO: Fail with custom error message
         return
 
     # 4. Get specific UID of new device
