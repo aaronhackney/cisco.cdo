@@ -2,6 +2,16 @@
 - name: Get ASA device inventory details
   hosts: localhost
   tasks:
+    - name: Get device by name
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        filter: "Austin"
+      register: named_device
+
+    - name: Print Results for all devices, all fields
+      ansible.builtin.debug:
+        msg:
+          "{{ named_device.stdout }}"
 
     - name: Get cdo inventory
       cisco.cdo.cdo_inventory:
