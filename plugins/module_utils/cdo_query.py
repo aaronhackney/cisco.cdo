@@ -1,3 +1,4 @@
+import urllib.parse
 from ansible.module_utils.basic import AnsibleModule
 
 
@@ -16,10 +17,11 @@ class CDOQuery:
              "autoAcceptOobEnabled,oobCheckInterval,larUid,larType,metadata,fmcApplianceIpv4,lastDeployTimestamp}]")
 
         # Build q query
-        if filter is not None:
+        if filter is not None and filter != '':
             q = (
-                f"((model:false) AND ((name:*{filter}*) OR (ipv4:*{filter}*) OR (serial:*{filter}*) OR "
-                f"(interfaces:*{filter}*))) AND (NOT deviceType:FMCE)")
+                f"((model:false) AND ((name:{filter}) OR (ipv4:{filter}) OR (serial:{filter}) OR "
+                f"(interfaces:{filter}))) AND (NOT deviceType:FMCE)"
+            )
         elif device_type is None or device_type == "all":
             q = "(model:false) AND (NOT deviceType:FMCE)"
         elif device_type == 'asa' or device_type == 'ios':
@@ -32,7 +34,6 @@ class CDOQuery:
         # Build r query
         # if device_type == None or device_type == "meraki" or device_type == "all":
         #    r = r[0:-1] + ",meraki/mxs.{status,state,physicalDevices,boundDevices,network}" + r[-1:]
-
         return {"q": q, "r": r}
 
     @staticmethod
@@ -40,3 +41,14 @@ class CDOQuery:
         filter = module.params.get('sdc')
         if filter is not None:
             return f"name:*{filter}* OR ipv4:*{filter}*"
+
+    @staticmethod
+    def get_cdfmc_query() -> str | None:
+        return {"q": "deviceType:FMCE"}
+
+    @staticmethod
+    def get_cdfmc_policy_query(limit: int, offset: int, access_list_name: str) -> str:
+        if access_list_name is not None:
+            return f"name={urllib.parse.quote(access_list_name)}"
+        else:
+            return f"limit={limit}&offset={offset}"

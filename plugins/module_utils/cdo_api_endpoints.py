@@ -6,3 +6,4 @@ class CDOAPI(Enum):
     SPECIFIC_DEVICE = "aegis/rest/v1/device/{uid}/specific-device"
     LARS = "aegis/rest/v1/services/targets/proxies"
     ASA_CONFIG = "aegis/rest/v1/services/asa/configs"
+    FMC_ACCESS_POLICY = "fmc/api/fmc_config/v1/domain/{domain_uid}/policy/accesspolicies"

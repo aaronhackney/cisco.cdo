@@ -12,6 +12,7 @@
         ipv4: '172.30.4.101'
         port: 8443
         device_type: 'asa'
-        username: 'aaron'
+        username: 'myuser'
         password: 'abc123'
+        ignore_cert: true
       register: added_device

@@ -1,13 +1,13 @@
 #!/usr/bin/python
 import requests
 import urllib.parse
+import ansible_collections.cisco.cdo.plugins.module_utils.cdo_errors as cdo_errors
 from time import sleep
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_crypto import CDOCrypto
-
 
 # Remove for publishing....
 import logging
@@ -20,21 +20,39 @@ logger.addHandler(fh)
 version = "1.0.0"
 
 
-def connectivity_poll(http_session: requests.session, endpoint: str, uid: str, retry: int = 5, delay: int = 1) -> bool | None:
-    # Poll until 200 ok or until retries have exceeded
-    logger.debug(f"UID: {uid}")
-    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid, 1)
-    logger.debug(f"path: {path}")
-    for i in range(retry):
-        logger.debug(f"{CDOAPI.SPECIFIC_DEVICE.value}/{uid}/specific-device")
+def connectivity_poll(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str) -> bool:
+    """ Get the device until connectivit has been established or fail after retry attempts have expired"""
+
+    for i in range(module.params.get('retry')):
+        status_code, device = get_device(http_session, endpoint, uid)
+        if device['connectivityState'] == -2:
+            if module.params.get('ignore_cert'):
+                status_code, result = update_device(http_session, endpoint, uid, data={"ignoreCertificate": True})
+                return True
+            else:
+                # TODO: Delete the device we just attempted to add....
+                raise cdo_errors.InvalidCertificate(f"{device['connectivityError']}")
+        if device['connectivityState'] > -1 or device['status'] == "WAITING_FOR_DATA":
+            return True
+        sleep(module.params.get('delay'))
+    raise cdo_errors.DeviceUnreachable(
+        f"Device {module.params.get('name')} was not reachable at "
+        f"{module.params.get('ipv4')}:{module.params.get('port')} by CDO"
+    )
+
+
+def credentails_polling(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str) -> bool:
+    for i in range(module.params.get('retry')):
         status_code, result = CDORequests.get(
-            http_session, endpoint, path=path)
-        logger.debug(f"Status Code: {status_code} Itteration {i}")
-        if status_code in range(200, 300):
-            logger.debug(f"Specific UID: {result['uid']}")
-            return result["uid"]
-        logger.debug(f"Return text: {result}")
-        sleep(delay)
+            http_session, f"https://{endpoint}", path=f"{CDOAPI.ASA_CONFIG.value}/{uid}")
+        if result['state'] == "BAD_CREDENTIALS":
+            raise cdo_errors.CredentialsFailure(
+                f"Credentials provided for device {module.params.get('name')} were rejected.")
+        elif result['state'] == "PENDING_GET_CONFIG_DONE" or result['state'] == "DONE":
+            return True
+        sleep(module.params.get('delay'))
+    raise cdo_errors.APIError(
+        f"Credentials for device {module.params.get('name')} were sent but we never reached a known good state.")
 
 
 def get_lar_list(module: AnsibleModule, http_session: requests.session, endpoint: str):
@@ -46,11 +64,41 @@ def get_lar_list(module: AnsibleModule, http_session: requests.session, endpoint
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
-def get_specific_device(module: AnsibleModule, http_session: requests.session, endpoint: str) -> str:
-    # TODO: Should we get uid as fcn parameter or always as params.get ?
+def get_cdfmc(http_session: requests.session, endpoint: str):
+    query = CDOQuery.get_cdfmc_query()
+    status_code, response = CDORequests.get(
+        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}?q={query['q']}")
+    if len(response) == 0:
+        raise cdo_errors.DeviceNotFound("A cdFMC was not found in this tenant")
+    return status_code, response[0]
+
+
+def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, cdfmc_host: str, domain_uid: str,
+                                 limit: int = 50, offset: int = 0, access_list_name=None):
+    http_session.headers['fmc-hostname'] = cdfmc_host
+    path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
+    path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
+    status_code, response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
+    return status_code, response
+
+
+def get_device(http_session: requests.session, endpoint: str, uid: str):
     """ Given a device uid, retreive the device specific details """
-    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', module.params.get('uid'), 1)
-    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
+    status_code, result = CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}")
+    return status_code, result
+
+
+def update_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
+    status_code, result = CDORequests.put(
+        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}", data=data)
+    return status_code, result
+
+
+def get_specific_device(http_session: requests.session, endpoint: str, uid: str) -> str:
+    """ Given a device uid, retreive the device specific details """
+    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid)
+    status_code, result = CDORequests.get(http_session, f"https://{endpoint}", path=path)
+    return status_code, result
 
 
 def get_inventory_summary(module: AnsibleModule, http_session: requests.session, endpoint: str, filter: str = None,
@@ -62,19 +110,25 @@ def get_inventory_summary(module: AnsibleModule, http_session: requests.session,
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
     status_code, response_json = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-    logger.debug(f"Status Code {status_code}")
-    logger.debug(f"response_json {response_json}")
     return response_json
 
 
+def add_ftd(module: AnsibleModule, http_session: requests.session, endpoint: str):
+    # Get cdFMC details
+    status_code, cdfmc = get_cdfmc(http_session, endpoint)
+    status_code, cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
+    status_code, acess_policy_list = get_cdfmc_access_policy_list(
+        http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
+        access_list_name=module.params.get('access_control_policy'))
+    logger.debug(f"access_policy_list: {acess_policy_list} is type {type(acess_policy_list)}")
+
+
 def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str):
-    """ Add device to CDO"""
-    # TODO: This builds ASA, need to modify for FTD...
-    # TODO: Add certificate check bypass option...
+    """ Add ASA or IOS device to CDO"""
+
     status_code, lar_list = get_lar_list(module, http_session, endpoint)
     if len(lar_list) != 1:
-        # TODO: Fail with custom message
-        return
+        raise (cdo_errors.SDCNotFound(f"Could not find SDC"))
     else:
         lar = lar_list[0]
 
@@ -87,54 +141,31 @@ def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str
         'model': False,
         'name': module.params.get('name'),
     }
+    if module.params.get('ignore_cert'):
+        device_data['ignore_cert'] = True
+
     path = CDOAPI.DEVICES.value
-
-    # TODO: Capture duplicate device and create custom error message
     status_code, device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=device_data)
+    connectivity_poll(module, http_session, endpoint, device['uid'])
 
-    if status_code not in range(200, 300):
-        # TODO: Fail with custom error message
-        return
-
-    # need to poll device for connectivity
-    # Then get specific device uid
-    # then add credentials....
-
-    specific_uid = connectivity_poll(
-        http_session, f"https://{endpoint}", device['uid'], retry=module.params.get('retry'), delay=module.params.get('delay'))
-
-    if not specific_uid:   # TODO: Fail with custom error message
-        logger.debug("Connectivity failed...")
-        return
-
-    # 4. Get specific UID of new device
-    # # TODO get proper data structure of returned device
-    # path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', device["uid"], 1)
-    # status_code, specific_device = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-
-    # 5. Encrypt the ASA/IOS credentials (move to own function
-    creds_crypto = CDOCrypto.encrypt_creds(module.params.get(
-        'username'), module.params.get('password'), lar['larPublicKey']['encodedKey'])
-    logger.debug(f"Crypto Creds: {creds_crypto}")
-    # 6. send credentials to LAR
-    path = f"{CDOAPI.ASA_CONFIG.value}/{specific_uid}"
-    logger.debug(f"PATH: {path}")
-    status_code, result = CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
-
-    if not status_code in range(200, 300):
-        # TODO: Fail with custom error message
-        logger.debug(f"Failed: {result}")
-        return
-    logger.debug(f"result: {result}")
-    # Check connectivity state
-    # TODO: retry/wait
-    # specific_device = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-    # logger.debug(f"Final add output: {specific_device}")
+    # Get UID of specific device, encrypt crednetials, send crendtials to SDC
+    status_code, specific_device = get_specific_device(http_session, endpoint, device['uid'])
+    creds_crypto = CDOCrypto.encrypt_creds(module.params.get('username'), module.params.get('password'), lar)
+    path = f"{CDOAPI.ASA_CONFIG.value}/{specific_device['uid']}"
+    CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
+    credentails_polling(module, http_session, endpoint, specific_device['uid'])
 
 
 def remove_inventory(data, http_session):
     result = ""
     return result
+
+
+def add_device(module: AnsibleModule, http_session: requests.session, endpoint: str):
+    if module.params.get('device_type').upper() == "ASA" or module.params.get('device_type').upper() == "IOS":
+        add_asa(module, http_session, endpoint)
+    if module.params.get('device_type').upper() == "FTD":
+        add_ftd(module, http_session, endpoint)
 
 
 def main():
@@ -160,10 +191,6 @@ def main():
             "default": "",
             "type": 'str'
         },
-        "uid": {
-            "default": "",
-            "type": 'str'
-        },
         "name": {
             "default": "",
             "type": 'str'
@@ -173,7 +200,7 @@ def main():
             "type": 'str'
         },
         "port": {
-            "default": None,
+            "default": 443,
             "type": 'int'
         },
         "sdc": {
@@ -195,14 +222,31 @@ def main():
         "password": {
             "default": "",
             "type": 'str'
-        }
+        },
+        "ignore_cert": {
+            "default": False,
+            "type": 'bool'
+        },
+        "onboard_method": {
+            "default": "cli",
+            "choices": ['cli', 'ltp'],
+            "type": 'str'
+        },
+        "access_control_policy": {
+            "default": "Default Access Control Policy",
+            "type": 'str'
+        },
+        "license": {
+            "type": 'list',
+            "choices": ['base', 'threat', 'urlfilter', 'malware', 'plus']
+        },
     }
 
     # based on the playbook "action" parameter
     action_map = {
         "specific_device": get_specific_device,
         "list": get_inventory_summary,
-        "add": add_asa,
+        "add": add_device,
         "remove": remove_inventory
     }
 
@@ -229,7 +273,7 @@ def main():
 
     # Execute the function based on the action and pass the input parameters
     api_result = action_map.get(module.params.get('action'))(module, http_session, endpoint)
-    logger.debug(f"Final output: {api_result}")
+
     # Return the module results to the calling playbook
     result['stdout'] = api_result
     module.exit_json(**result)
