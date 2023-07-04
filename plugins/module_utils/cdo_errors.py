@@ -1,4 +1,4 @@
-class CDODuplicateObject(Exception):
+class DuplicateObject(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
@@ -35,6 +35,12 @@ class CredentialsFailure(Exception):
 
 
 class DeviceNotFound(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(self.message)
+
+
+class ObjectNotFound(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)

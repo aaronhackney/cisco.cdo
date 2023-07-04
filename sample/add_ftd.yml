@@ -11,10 +11,12 @@
         access_control_policy: 'Default Access Control Policy'
         name: 'Austin'
         device_type: 'ftd'
+        is_virtual: true
+        performance_tier: FTDv10
         license:
-          - base
-          - threat
-          - urlfilter
-          - malware
-          - plus
+          - BASE
+          - THREAT
+          - URLFilter
+          - MALWARE
+          - PLUS
       register: added_device

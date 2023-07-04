@@ -7,3 +7,4 @@ class CDOAPI(Enum):
     LARS = "aegis/rest/v1/services/targets/proxies"
     ASA_CONFIG = "aegis/rest/v1/services/asa/configs"
     FMC_ACCESS_POLICY = "fmc/api/fmc_config/v1/domain/{domain_uid}/policy/accesspolicies"
+    FTDS = "aegis/rest/v1/services/firepower/ftds"

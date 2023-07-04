@@ -6,7 +6,7 @@ import requests
 import json
 from enum import Enum
 from functools import wraps
-from .cdo_errors import CDODuplicateObject, APIError
+from .cdo_errors import DuplicateObject, APIError, DeviceNotFound
 
 # Remove for publishing....
 import logging
@@ -43,11 +43,13 @@ class CDOAPIWrapper(object):
         @wraps(fn)
         def new_func(*args, **kwargs):
             status_code, response = fn(*args, **kwargs)
-            if status_code in range(400, 600):
+            if status_code == 404:
+                raise DeviceNotFound("404 Device Not Found")
+            elif status_code in range(400, 600):
                 if isinstance(response, dict) and response['errorMessage'].startswith("Duplicate"):
-                    raise CDODuplicateObject(response['errorMessage'])
+                    raise DuplicateObject(response['errorMessage'])
                 elif isinstance(response, dict):
-                    raise CDODuplicateObject(response['errorMessage'])
+                    raise DuplicateObject(response['errorMessage'])
                 else:
                     raise APIError(response)
             return status_code, response
@@ -71,8 +73,9 @@ class CDORequests:
         """ Given the CDO endpoint, path, and query, return the json payload from the API """
         uri = url if path is None else f"{url}/{path}"
         result = http_session.get(url=uri, headers=http_session.headers, params=query)
-        # logger.debug(result.status_code)
-        # logger.debug(result.text)
+        logger.debug(f"URI: {uri}")
+        logger.debug(result.status_code)
+        logger.debug(result.text)
         if result.text and result.status_code in range(200, 300):
             return result.status_code, result.json()
         else:

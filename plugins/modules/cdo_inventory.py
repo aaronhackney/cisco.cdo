@@ -55,6 +55,20 @@ def credentails_polling(module: AnsibleModule, http_session: requests.session, e
         f"Credentials for device {module.params.get('name')} were sent but we never reached a known good state.")
 
 
+def new_ftd_polling(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str):
+    for i in range(module.params.get('retry')):
+        logger.debug("Running ftd poller")
+        try:
+            status_code, result = get_specific_device(http_session, endpoint, uid)
+            if status_code == 200:
+                return status_code, result
+        except cdo_errors.DeviceNotFound:
+            sleep(module.params.get('delay'))
+            logger.debug(f"Device not found")
+            continue
+    raise cdo_errors.AddDeviceFailure(f"Failed to add FTD {module.params.get('name')}")
+
+
 def get_lar_list(module: AnsibleModule, http_session: requests.session, endpoint: str):
     """ Return a list of lars (SDC/CDG from CDO) """
     path = CDOAPI.LARS.value
@@ -79,6 +93,9 @@ def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, 
     path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
     path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
     status_code, response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
+    if response['paging']['count'] == 0:
+        if access_list_name is not None:
+            raise cdo_errors.ObjectNotFound(f"Access Policy {access_list_name} not found on cdFMC.")
     return status_code, response
 
 
@@ -117,10 +134,42 @@ def add_ftd(module: AnsibleModule, http_session: requests.session, endpoint: str
     # Get cdFMC details
     status_code, cdfmc = get_cdfmc(http_session, endpoint)
     status_code, cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
-    status_code, acess_policy_list = get_cdfmc_access_policy_list(
+    # Should I be getting these from the fmc collection?
+    status_code, acess_policy = get_cdfmc_access_policy_list(
         http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
         access_list_name=module.params.get('access_control_policy'))
-    logger.debug(f"access_policy_list: {acess_policy_list} is type {type(acess_policy_list)}")
+
+    device_data = {
+        'name': module.params.get('name'),
+        'associatedDeviceUid': cdfmc['uid'],
+        'metadata': {
+            'accessPolicyName': acess_policy['items'][0]['name'],
+            'accessPolicyUuid': acess_policy['items'][0]['id'],
+            'license_caps': ','.join(module.params.get('license')),
+            'performanceTier': module.params.get('performance_tier')
+        },
+        'deviceType': 'FTDC',
+        'model': "false",
+        'state': 'NEW',
+        'type': 'devices'
+    }
+    logger.debug(f"payload: {device_data}")
+    # Create the device
+    status_code, new_device = CDORequests.post(
+        http_session, f"https://{endpoint}", path=CDOAPI.DEVICES.value, data=device_data)
+
+    # Wait for it to be created and return the specific device model
+    status_code, result = new_ftd_polling(module, http_session, endpoint, new_device['uid'])
+
+    # Enable FTD onboarding on the cdFMC using the specific device uid
+    status_code, result = CDORequests.put(
+        http_session, f"https://{endpoint}", path=f"{CDOAPI.FTDS.value}/{result['uid']}",
+        data={"queueTriggerState": "INITIATE_FTDC_ONBOARDING"})
+
+    status_code, result = CDORequests.get(
+        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{new_device['uid']}")
+    # Get onboarding FTD CLI commands
+    logger.debug(f"CLI Command: {result['metadata']['generatedCommand']}")
 
 
 def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str):
@@ -238,7 +287,15 @@ def main():
         },
         "license": {
             "type": 'list',
-            "choices": ['base', 'threat', 'urlfilter', 'malware', 'plus']
+            "choices": ['BASE', 'THREAT', 'URLFilter', 'MALWARE', 'CARRIER', 'PLUS', 'APEX', 'VPNOnly']
+        },
+        "is_virtual": {
+            "default": False,
+            "type": 'bool'
+        },
+        "performance_tier": {
+            "choices": ['FTDv', 'FTDv5', 'FTDv10', 'FTDv20', 'FTDv30', 'FTDv50', 'FTDv100'],
+            "type": 'str'
         },
     }
 
