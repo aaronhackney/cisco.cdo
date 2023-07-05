@@ -30,10 +30,14 @@ INVENTORY_ARGUMENT_SPEC = {
                     "performance_tier": {
                             "choices": ["FTDv", "FTDv5", "FTDv10", "FTDv20", "FTDv30", "FTDv50", "FTDv100"],
                             "type": "str"
-                    },
+                        },
                     "retry": {"default": 10, "type": "int"},
                     "delay": {"default": 1, "type": "int"},
                 }},
     "api_key": {"required": True, "type": "str", "no_log": True},
     "region": {"default": "us", "choices": ["us", "eu", "apj"], "type": "str"},
 }
+
+REQUIRED_ONE_OF = ["inventory", "add_asa", "add_ftd"]
+
+MUTUALLY_EXCLUSIVE = []

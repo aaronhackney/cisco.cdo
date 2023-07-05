@@ -55,6 +55,9 @@ extends_documentation_fragment:
 
 author:
     - Aaron Hackney (@aaronhackney)
+requirements:
+  - tbd
+  
 '''
 
 EXAMPLES = r'''
@@ -116,19 +119,6 @@ EXAMPLES = r'''
           "{{ inventory.stdout }}"
 '''
 
-RETURN = r'''
-# These are examples of possible return values, and in general should use other names for return values.
-original_message:
-    description: The original name param that was passed in.
-    type: str
-    returned: always
-    sample: 'hello world'
-message:
-    description: The output message that the test module generates.
-    type: str
-    returned: always
-    sample: 'goodbye'
-'''
 # fmt: off 
 import logging
 from time import sleep
@@ -136,7 +126,11 @@ from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
 from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
-from ansible_collections.cisco.cdo.plugins.module_utils.args_common import INVENTORY_ARGUMENT_SPEC
+from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
+    INVENTORY_ARGUMENT_SPEC,
+    REQUIRED_ONE_OF,
+    MUTUALLY_EXCLUSIVE
+)
 from ansible.module_utils.basic import AnsibleModule
 import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
 import urllib.parse
@@ -339,7 +333,8 @@ def add_asa(module_params: dict, http_session: requests.session, endpoint: str):
 def main():
 
     # Instantiate the module
-    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC)
+    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
+                           REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE)
 
     # The API endpoint we will hit based on region
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
