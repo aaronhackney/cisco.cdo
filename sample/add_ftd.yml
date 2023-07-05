@@ -9,7 +9,7 @@
         add_ftd:
           onboard_method: 'cli'
           access_control_policy: 'Default Access Control Policy'
-          name: 'Austin'
+          name: 'ElPaso'
           is_virtual: true
           performance_tier: FTDv10
           license:

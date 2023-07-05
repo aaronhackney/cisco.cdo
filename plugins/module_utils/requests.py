@@ -6,7 +6,7 @@ import requests
 import json
 from enum import Enum
 from functools import wraps
-from .cdo_errors import DuplicateObject, APIError, DeviceNotFound
+from .errors import DuplicateObject, APIError, DeviceNotFound
 
 # Remove for publishing....
 import logging
@@ -56,6 +56,7 @@ class CDOAPIWrapper(object):
                         raise APIError(ex.response.text)
 
         return new_func
+
 
 class CDORequests:
     @staticmethod

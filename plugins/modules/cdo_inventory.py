@@ -1,19 +1,10 @@
 #!/usr/bin/python
-
+# -*- coding: utf-8 -*-
+#
 # Copyright: (c) 2018, Terry Jones <terry.jones@example.org>
-# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
-from __future__ import (absolute_import, division, print_function)
-import requests
-import urllib.parse
-import ansible_collections.cisco.cdo.plugins.module_utils.cdo_errors as cdo_errors
-from time import sleep
-from ansible.module_utils.basic import AnsibleModule
-from ansible_collections.cisco.cdo.plugins.module_utils.cdo_requests import CDORegions, CDORequests
-from ansible_collections.cisco.cdo.plugins.module_utils.cdo_api_endpoints import CDOAPI
-from ansible_collections.cisco.cdo.plugins.module_utils.cdo_query import CDOQuery
-from ansible_collections.cisco.cdo.plugins.module_utils.cdo_crypto import CDOCrypto
-import logging
+# Apache License v2.0+ (see LICENSE or http://www.apache.org/licenses/)
 
+from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
 DOCUMENTATION = r'''
@@ -24,46 +15,105 @@ short_description: This module is to add, modify, read, and remove devivces on C
 
 version_added: "1.0.0"
 
-description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO). 
+description: This module is to add, modify, read, and remove inventory (devices) on Cisco Defense Orchestrator (CDO). 
 With this module, one can add, modify, read, and remove the following devices in a CDO tenant's inventory: 
 [FTD, ASA, IOS]
 
 options:
-    name:
-        description: This is the message to send to the test module.
+    api_key:
+        description:
+            - API key for the tenant on which we wish to operate
         required: true
         type: str
-    new:
+    region:
+        description:
+            - The region where the CDO tenant exists 
+        choices: [us, eu, apj]
+        default: us
+        required: true
+        type: str
+    inventory:
+        description:
+            - Return a dictionary of json device objects in the current tenant's inventory
+        required: false
+        type: dict
+    add_ftd:
+        description: This is the message to send to the test module.
+        required: false
+        type: dict
+    add_asa:
         description:
             - Control to demo if the result of this module is changed or not.
             - Parameter description can be a list as well.
         required: false
         type: bool
+    
 # Specify this value according to your collection
 # in format of namespace.collection.doc_fragment_name
 extends_documentation_fragment:
     - my_namespace.my_collection.my_doc_fragment_name
 
 author:
-    - Your Name (@yourGitHubHandle)
+    - Aaron Hackney (@aaronhackney)
 '''
 
 EXAMPLES = r'''
-# Pass in a message
-- name: Test with a message
-  my_namespace.my_collection.my_test:
-    name: hello world
+- name: Add FTD CDO inventory
+  hosts: localhost
+  tasks:
+    - name: Add FTD to CDO and cdFMC
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        add_ftd:
+          onboard_method: 'cli'
+          access_control_policy: 'Default Access Control Policy'
+          name: 'ElPaso'
+          is_virtual: true
+          performance_tier: FTDv10
+          license:
+            - BASE
+            - THREAT
+            - URLFilter
+            - MALWARE
+            - PLUS
+      register: added_device
 
-# pass in a message and have changed true
-- name: Test with a message and changed output
-  my_namespace.my_collection.my_test:
-    name: hello world
-    new: true
+---
+- name: Add ASA CDO inventory
+  hosts: localhost
+  tasks:
+    - name: Add ASA to CDO
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        add_asa:
+          sdc: 'CDO_cisco_aahackne-SDC-1'
+          name: 'Austin'
+          ipv4: '172.30.4.101'
+          port: 8443
+          device_type: 'asa'
+          username: 'myuser'
+          password: 'abc123'
+          ignore_cert: true
+      register: added_device
+      
+---
+- name: Get device inventory details
+  hosts: localhost
+  tasks:
+    - name: Get the CDO inventory for this tenant
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: "us"
+        inventory:
+          device_type: "all"
+      register: inventory
 
-# fail the module
-- name: Test failure of the module
-  my_namespace.my_collection.my_test:
-    name: fail me
+    - name: Print All Results for all devices, all fields
+      ansible.builtin.debug:
+        msg:
+          "{{ inventory.stdout }}"
 '''
 
 RETURN = r'''
@@ -79,6 +129,19 @@ message:
     returned: always
     sample: 'goodbye'
 '''
+# fmt: off 
+import logging
+from time import sleep
+from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
+from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
+from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
+from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
+from ansible_collections.cisco.cdo.plugins.module_utils.args_common import INVENTORY_ARGUMENT_SPEC
+from ansible.module_utils.basic import AnsibleModule
+import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
+import urllib.parse
+import requests
+# fmt: on
 
 __version__ = "1.0.0"
 
@@ -157,7 +220,9 @@ def get_cdfmc(http_session: requests.session, endpoint: str):
 
 def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, cdfmc_host: str, domain_uid: str,
                                  limit: int = 50, offset: int = 0, access_list_name=None):
-    http_session.headers['fmc-hostname'] = cdfmc_host
+    """ Given the domain uuid of the cdFMC, retreive the list of access policies """
+    # TODO: use the FMC collection to retrieve this
+    http_session.headers['fmc-hostname'] = cdfmc_host  # This header is the magic that hits cdFMC api and not CDO API
     path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
     path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
     response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
@@ -187,11 +252,12 @@ def get_specific_device(http_session: requests.session, endpoint: str, uid: str)
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
-def get_inventory_summary(module: AnsibleModule, http_session: requests.session, endpoint: str, filter: str = None,
-                          limit: int = 50, offset: int = 0) -> str:
+def inventory(module_params: dict, http_session: requests.session, endpoint: str, filter: str = None,
+              limit: int = 50, offset: int = 0) -> str:
     """ Get CDO inventory """
     # TODO: Support paging
-    query = CDOQuery.get_inventory_query(module)
+    query = CDOQuery.get_inventory_query(module_params)
+    logger.debug(f"Filter: {query}")
     q = urllib.parse.quote_plus(query['q'])
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
@@ -270,92 +336,11 @@ def add_asa(module_params: dict, http_session: requests.session, endpoint: str):
     credentails_polling(module_params, http_session, endpoint, specific_device['uid'])
 
 
-def remove_inventory(data, http_session):
-    result = ""
-    return result
-
-
-# def add_device(module: AnsibleModule, http_session: requests.session, endpoint: str):
-#     if module.params.get('device_type').upper() == "ASA" or module.params.get('device_type').upper() == "IOS":
-#         return add_asa(module, http_session, endpoint)
-#     if module.params.get('device_type').upper() == "FTD":
-#         return add_ftd(module, http_session, endpoint)
-
-
 def main():
-    # Input variables from playbooks
-    # Simpify down to lists?
-    fields = {
-        "add_asa": {"type": "dict",
-                    "options": {
-                        # API KEY And region will be top level parameters
-                        "name": {"default": "", "type": 'str'},
-                        "ipv4": {"default": "", "type": 'str'},
-                        "port": {"default": 443, "type": 'int'},
-                        "sdc": {"default": "", "type": 'str'},
-                        "username": {"default": "", "type": 'str'},
-                        "password": {"default": "", "type": 'str'},
-                        "ignore_cert": {"default": False, "type": 'bool'},
-                        "device_type": {"default": "asa", "choices": ['asa'], "type": 'str'},
-                        "retry": {"default": 10, "type": 'int'},
-                        "delay": {"default": 1, "type": 'int'},
-                    }},
-        "add_ftd": {"type": "dict",
-                    "options": {
-                        "name": {"required": True, "type": 'str'},
-                        "is_virtual": {"default": False, "type": 'bool'},
-                        "onboard_method": {"default": "cli", "choices": ['cli', 'ltp'], "type": 'str'},
-                        "access_control_policy": {"default": "Default Access Control Policy", "type": 'str'},
-                        "license": {
-                            "type": 'list',
-                            "choices": ['BASE', 'THREAT', 'URLFilter', 'MALWARE', 'CARRIER', 'PLUS', 'APEX', 'VPNOnly']
-                        },
-                        "performance_tier": {
-                            "choices": ['FTDv', 'FTDv5', 'FTDv10', 'FTDv20', 'FTDv30', 'FTDv50', 'FTDv100'],
-                            "type": 'str'
-                        },
-                        "retry": {"default": 10, "type": 'int'},
-                        "delay": {"default": 1, "type": 'int'},
-                    }},
-        "api_key": {"required": True, "type": "str", "no_log": True},
-        "region": {"default": "us", "choices": ['us', 'eu', 'apj'], "type": 'str'},
-        # "device_type": {"default": "all", "choices": ['asa', 'ftd', 'ios', 'meraki', 'all'], "type": 'str'},
-        # "action": {"default": "list", "choices": ['specific_device', 'list', 'add', 'remove'], "type": 'str'},
-        # "filter": {"default": "", "type": 'str'},
-        # "name": {"default": "", "type": 'str'},
-        # "ipv4": {"default": "", "type": 'str'},
-        # "port": {"default": 443, "type": 'int'},
-        # "sdc": {"default": "", "type": 'str'},
-        # "retry": {"default": 10, "type": 'int'},
-        # "delay": {"default": 1, "type": 'int'},
-        # "username": {"default": "", "type": 'str'},
-        # "password": {"default": "", "type": 'str'},
-        # "ignore_cert": {"default": False, "type": 'bool'},
-        # "is_virtual": {"default": False, "type": 'bool'},
-        # "onboard_method": {"default": "cli", "choices": ['cli', 'ltp'], "type": 'str'},
-        # "access_control_policy": {"default": "Default Access Control Policy", "type": 'str'},
-        # "license": {
-        #     "type": 'list',
-        #     "choices": ['BASE', 'THREAT', 'URLFilter', 'MALWARE', 'CARRIER', 'PLUS', 'APEX', 'VPNOnly']
-        # },
-        # "performance_tier": {
-        #     "choices": ['FTDv', 'FTDv5', 'FTDv10', 'FTDv20', 'FTDv30', 'FTDv50', 'FTDv100'],
-        #     "type": 'str'
-        # },
-    }
-    logger.debug(f"Version: {__version__}")
-    # based on the playbook "action" parameter
-    action_map = {
-        # "specific_device": get_specific_device,
-        "list": get_inventory_summary,
-        # "add": add_device,
-        "remove": remove_inventory
-    }
 
     # Instantiate the module
-    module = AnsibleModule(argument_spec=fields)
-    logger.debug(f"COMMANDS:")
-    logger.debug(f"COMMANDS {module.params}")
+    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC)
+
     # The API endpoint we will hit based on region
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
 
@@ -371,12 +356,16 @@ def main():
         changed=False
     )
 
-    # Create the common HTTP Headers
+    # Create the HTTP session and headers
     # TODO provide module versioning, not ansible version
     http_session = CDORequests.create_session(module.params.get('api_key'), __version__)
 
     # Execute the function based on the action and pass the input parameters
-    if module.params.get('add_asa') is not None:
+    if module.params.get('inventory') is not None:
+        result['stdout'] = inventory(module.params.get('inventory'),  http_session, endpoint)
+        logger.debug(f"Inventory: {inventory(module.params.get('inventory'),  http_session, endpoint)}")
+        result['changed'] = False
+    elif module.params.get('add_asa') is not None:
         # api_result = add_device(module, http_session, endpoint
         result['stdout'] = add_asa(module.params.get('add_asa'),  http_session, endpoint)
         result['changed'] = True
@@ -384,11 +373,7 @@ def main():
         result['stdout'] = add_ftd(module.params.get('add_ftd'), http_session, endpoint)
         result['changed'] = True
 
-    # api_result = action_map.get(module.params.get('action'))(module, http_session, endpoint)
     # Return the module results to the calling playbook
-    # result['stdout'] = api_result
-    logger.debug(f"{result['stdout']}")
-    result['changed'] = True
     module.exit_json(**result)
 
 

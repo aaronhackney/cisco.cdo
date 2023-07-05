@@ -1,14 +1,13 @@
 import urllib.parse
-from ansible.module_utils.basic import AnsibleModule
 
 
 class CDOQuery:
     """ Helpers for building complex inventory queries"""
     @staticmethod
-    def get_inventory_query(module: AnsibleModule) -> dict:
+    def get_inventory_query(module_params: dict) -> dict:
         """ Build the inventory query based on what the user is looking for"""
-        device_type = module.params.get('device_type')
-        filter = module.params.get('filter')
+        device_type = module_params['device_type']
+        filter = module_params['filter']
         r = ("[targets/devices.{name,customLinks,healthStatus,sseDeviceRegistrationToken,"
              "sseDeviceSerialNumberRegistration,sseEnabled,sseDeviceData,state,ignoreCertificate,deviceType,"
              "configState,configProcessingState,model,ipv4,modelNumber,serial,chassisSerial,hasFirepower,"
