@@ -1,4 +1,8 @@
 #!/usr/bin/python
+
+# Copyright: (c) 2018, Terry Jones <terry.jones@example.org>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+from __future__ import (absolute_import, division, print_function)
 import requests
 import urllib.parse
 import ansible_collections.cisco.cdo.plugins.module_utils.cdo_errors as cdo_errors
@@ -8,24 +12,90 @@ from ansible_collections.cisco.cdo.plugins.module_utils.cdo_requests import CDOR
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.cdo_crypto import CDOCrypto
+import logging
+
+__metaclass__ = type
+
+DOCUMENTATION = r'''
+---
+module: cdo_inventory
+
+short_description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO).
+
+version_added: "1.0.0"
+
+description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO). 
+With this module, one can add, modify, read, and remove the following devices in a CDO tenant's inventory: 
+[FTD, ASA, IOS]
+
+options:
+    name:
+        description: This is the message to send to the test module.
+        required: true
+        type: str
+    new:
+        description:
+            - Control to demo if the result of this module is changed or not.
+            - Parameter description can be a list as well.
+        required: false
+        type: bool
+# Specify this value according to your collection
+# in format of namespace.collection.doc_fragment_name
+extends_documentation_fragment:
+    - my_namespace.my_collection.my_doc_fragment_name
+
+author:
+    - Your Name (@yourGitHubHandle)
+'''
+
+EXAMPLES = r'''
+# Pass in a message
+- name: Test with a message
+  my_namespace.my_collection.my_test:
+    name: hello world
+
+# pass in a message and have changed true
+- name: Test with a message and changed output
+  my_namespace.my_collection.my_test:
+    name: hello world
+    new: true
+
+# fail the module
+- name: Test failure of the module
+  my_namespace.my_collection.my_test:
+    name: fail me
+'''
+
+RETURN = r'''
+# These are examples of possible return values, and in general should use other names for return values.
+original_message:
+    description: The original name param that was passed in.
+    type: str
+    returned: always
+    sample: 'hello world'
+message:
+    description: The output message that the test module generates.
+    type: str
+    returned: always
+    sample: 'goodbye'
+'''
+
+__version__ = "1.0.0"
 
 # Remove for publishing....
-import logging
 logger = logging.getLogger('cdo_inventory')
 logger.setLevel(logging.DEBUG)
 fh = logging.FileHandler('/tmp/cdo_inventory.log')
 fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
-version = "1.0.0"
 
-
-def connectivity_poll(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str) -> bool:
+def connectivity_poll(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
     """ Check device connectivity or fail after retry attempts have expired"""
-    for i in range(module.params.get('retry')):
+    for i in range(module_params['retry']):
         device = get_device(http_session, endpoint, uid)
         if device['connectivityState'] == -2:
-            if module.params.get('ignore_cert'):
+            if module_params['ignore_cert']:
                 update_device(http_session, endpoint, uid, data={"ignoreCertificate": True})
                 return True
             else:
@@ -33,43 +103,43 @@ def connectivity_poll(module: AnsibleModule, http_session: requests.session, end
                 raise cdo_errors.InvalidCertificate(f"{device['connectivityError']}")
         if device['connectivityState'] > -1 or device['status'] == "WAITING_FOR_DATA":
             return True
-        sleep(module.params.get('delay'))
+        sleep(module_params['delay'])
     raise cdo_errors.DeviceUnreachable(
-        f"Device {module.params.get('name')} was not reachable at "
-        f"{module.params.get('ipv4')}:{module.params.get('port')} by CDO"
+        f"Device {module_params['name']} was not reachable at "
+        f"{module_params['ipv4']}:{module_params['port']} by CDO"
     )
 
 
-def credentails_polling(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str) -> bool:
+def credentails_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
     """ Check credentials have been used successfully  or fail after retry attempts have expired"""
-    for i in range(module.params.get('retry')):
+    for i in range(module_params['retry']):
         result = CDORequests.get(
             http_session, f"https://{endpoint}", path=f"{CDOAPI.ASA_CONFIG.value}/{uid}")
         if result['state'] == "BAD_CREDENTIALS":
             raise cdo_errors.CredentialsFailure(
-                f"Credentials provided for device {module.params.get('name')} were rejected.")
+                f"Credentials provided for device {module_params['name']} were rejected.")
         elif result['state'] == "PENDING_GET_CONFIG_DONE" or result['state'] == "DONE":
             return True
-        sleep(module.params.get('delay'))
+        sleep(module_params['delay'])
     raise cdo_errors.APIError(
-        f"Credentials for device {module.params.get('name')} were sent but we never reached a known good state.")
+        f"Credentials for device {module_params['name']} were sent but we never reached a known good state.")
 
 
-def new_ftd_polling(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str):
+def new_ftd_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str):
     """ Check that the new FTD specific device has been created before attempting move to the onboarding step """
-    for i in range(module.params.get('retry')):
+    for i in range(module_params['retry']):
         try:
             return get_specific_device(http_session, endpoint, uid)
         except cdo_errors.DeviceNotFound:
-            sleep(module.params.get('delay'))
+            sleep(module_params['delay'])
             continue
-    raise cdo_errors.AddDeviceFailure(f"Failed to add FTD {module.params.get('name')}")
+    raise cdo_errors.AddDeviceFailure(f"Failed to add FTD {module_params['name']}")
 
 
-def get_lar_list(module: AnsibleModule, http_session: requests.session, endpoint: str):
+def get_lar_list(module_params: dict, http_session: requests.session, endpoint: str):
     """ Return a list of lars (SDC/CDG from CDO) """
     path = CDOAPI.LARS.value
-    query = CDOQuery.get_lar_query(module)
+    query = CDOQuery.get_lar_query(module_params)
     if query is not None:
         path = f"{path}?q={urllib.parse.quote_plus(query)}"
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
@@ -128,23 +198,23 @@ def get_inventory_summary(module: AnsibleModule, http_session: requests.session,
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
-def add_ftd(module: AnsibleModule, http_session: requests.session, endpoint: str):
+def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
     # Get cdFMC details
     cdfmc = get_cdfmc(http_session, endpoint)
     cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
     # Should I be getting these from the fmc collection?
     acess_policy = get_cdfmc_access_policy_list(
         http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
-        access_list_name=module.params.get('access_control_policy'))
+        access_list_name=module_params['access_control_policy'])
 
     device_data = {
-        'name': module.params.get('name'),
+        'name': module_params['name'],
         'associatedDeviceUid': cdfmc['uid'],
         'metadata': {
             'accessPolicyName': acess_policy['items'][0]['name'],
             'accessPolicyUuid': acess_policy['items'][0]['id'],
-            'license_caps': ','.join(module.params.get('license')),
-            'performanceTier': module.params.get('performance_tier')
+            'license_caps': ','.join(module_params['license']),
+            'performanceTier': module_params['performance_tier']
         },
         'deviceType': 'FTDC',
         'model': "false",
@@ -155,47 +225,49 @@ def add_ftd(module: AnsibleModule, http_session: requests.session, endpoint: str
     new_device = CDORequests.post(http_session, f"https://{endpoint}", path=CDOAPI.DEVICES.value, data=device_data)
 
     # Wait for it to be created and return the specific device model
-    result = new_ftd_polling(module, http_session, endpoint, new_device['uid'])
+    result = new_ftd_polling(module_params, http_session, endpoint, new_device['uid'])
 
     # Enable FTD onboarding on the cdFMC using the specific device uid
     update_ftd_device(http_session, endpoint, result['uid'], {"queueTriggerState": "INITIATE_FTDC_ONBOARDING"})
     result = CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{new_device['uid']}")
 
     # Get onboarding FTD CLI commands
-    return f"{module.params.get('name')} CLI Command: {result['metadata']['generatedCommand']}"
+    return f"{module_params['name']} CLI Command: {result['metadata']['generatedCommand']}"
 
 
-def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str):
+def add_asa(module_params: dict, http_session: requests.session, endpoint: str):
     """ Add ASA or IOS device to CDO"""
 
-    lar_list = get_lar_list(module, http_session, endpoint)
+    lar_list = get_lar_list(module_params, http_session, endpoint)
     if len(lar_list) != 1:
         raise (cdo_errors.SDCNotFound(f"Could not find SDC"))
     else:
         lar = lar_list[0]
 
     device_data = {
-        'deviceType': module.params.get('device_type').upper(),
-        'host': module.params.get('ipv4'),
-        'ipv4': f"{module.params.get('ipv4')}:{module.params.get('port')}",
+        'deviceType': module_params['device_type'].upper(),
+        'host': module_params['ipv4'],
+        'ipv4': f"{module_params['ipv4']}:{module_params['port']}",
         'larType': 'CDG' if lar['cdg'] else 'SDC',
         'larUid': lar['uid'],
         'model': False,
-        'name': module.params.get('name'),
+        'name': module_params['name'],
     }
-    if module.params.get('ignore_cert'):
+
+    if module_params['ignore_cert']:
         device_data['ignore_cert'] = True
 
     path = CDOAPI.DEVICES.value
     device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=device_data)
-    connectivity_poll(module, http_session, endpoint, device['uid'])
+    connectivity_poll(module_params, http_session, endpoint, device['uid'])
 
     # Get UID of specific device, encrypt crednetials, send crendtials to SDC
     specific_device = get_specific_device(http_session, endpoint, device['uid'])
-    creds_crypto = CDOCrypto.encrypt_creds(module.params.get('username'), module.params.get('password'), lar)
+
+    creds_crypto = CDOCrypto.encrypt_creds(module_params['username'], module_params['password'], lar)
     path = f"{CDOAPI.ASA_CONFIG.value}/{specific_device['uid']}"
     CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
-    credentails_polling(module, http_session, endpoint, specific_device['uid'])
+    credentails_polling(module_params, http_session, endpoint, specific_device['uid'])
 
 
 def remove_inventory(data, http_session):
@@ -203,106 +275,87 @@ def remove_inventory(data, http_session):
     return result
 
 
-def add_device(module: AnsibleModule, http_session: requests.session, endpoint: str):
-    if module.params.get('device_type').upper() == "ASA" or module.params.get('device_type').upper() == "IOS":
-        return add_asa(module, http_session, endpoint)
-    if module.params.get('device_type').upper() == "FTD":
-        return add_ftd(module, http_session, endpoint)
+# def add_device(module: AnsibleModule, http_session: requests.session, endpoint: str):
+#     if module.params.get('device_type').upper() == "ASA" or module.params.get('device_type').upper() == "IOS":
+#         return add_asa(module, http_session, endpoint)
+#     if module.params.get('device_type').upper() == "FTD":
+#         return add_ftd(module, http_session, endpoint)
 
 
 def main():
     # Input variables from playbooks
+    # Simpify down to lists?
     fields = {
+        "add_asa": {"type": "dict",
+                    "options": {
+                        # API KEY And region will be top level parameters
+                        "name": {"default": "", "type": 'str'},
+                        "ipv4": {"default": "", "type": 'str'},
+                        "port": {"default": 443, "type": 'int'},
+                        "sdc": {"default": "", "type": 'str'},
+                        "username": {"default": "", "type": 'str'},
+                        "password": {"default": "", "type": 'str'},
+                        "ignore_cert": {"default": False, "type": 'bool'},
+                        "device_type": {"default": "asa", "choices": ['asa'], "type": 'str'},
+                        "retry": {"default": 10, "type": 'int'},
+                        "delay": {"default": 1, "type": 'int'},
+                    }},
+        "add_ftd": {"type": "dict",
+                    "options": {
+                        "name": {"required": True, "type": 'str'},
+                        "is_virtual": {"default": False, "type": 'bool'},
+                        "onboard_method": {"default": "cli", "choices": ['cli', 'ltp'], "type": 'str'},
+                        "access_control_policy": {"default": "Default Access Control Policy", "type": 'str'},
+                        "license": {
+                            "type": 'list',
+                            "choices": ['BASE', 'THREAT', 'URLFilter', 'MALWARE', 'CARRIER', 'PLUS', 'APEX', 'VPNOnly']
+                        },
+                        "performance_tier": {
+                            "choices": ['FTDv', 'FTDv5', 'FTDv10', 'FTDv20', 'FTDv30', 'FTDv50', 'FTDv100'],
+                            "type": 'str'
+                        },
+                        "retry": {"default": 10, "type": 'int'},
+                        "delay": {"default": 1, "type": 'int'},
+                    }},
         "api_key": {"required": True, "type": "str", "no_log": True},
-        "region": {
-            "default": "us",
-            "choices": ['us', 'eu', 'apj'],
-            "type": 'str'
-        },
-        "device_type": {
-            "default": "all",
-            "choices": ['asa', 'ftd', 'ios', 'meraki', 'all'],
-            "type": 'str'
-        },
-        "action": {
-            "default": "list",
-            "choices": ['specific_device', 'list', 'add', 'remove'],
-            "type": 'str'
-        },
-        "filter": {
-            "default": "",
-            "type": 'str'
-        },
-        "name": {
-            "default": "",
-            "type": 'str'
-        },
-        "ipv4": {
-            "default": "",
-            "type": 'str'
-        },
-        "port": {
-            "default": 443,
-            "type": 'int'
-        },
-        "sdc": {
-            "default": "",
-            "type": 'str'
-        },
-        "retry": {
-            "default": 10,
-            "type": 'int'
-        },
-        "delay": {
-            "default": 1,
-            "type": 'int'
-        },
-        "username": {
-            "default": "",
-            "type": 'str'
-        },
-        "password": {
-            "default": "",
-            "type": 'str'
-        },
-        "ignore_cert": {
-            "default": False,
-            "type": 'bool'
-        },
-        "onboard_method": {
-            "default": "cli",
-            "choices": ['cli', 'ltp'],
-            "type": 'str'
-        },
-        "access_control_policy": {
-            "default": "Default Access Control Policy",
-            "type": 'str'
-        },
-        "license": {
-            "type": 'list',
-            "choices": ['BASE', 'THREAT', 'URLFilter', 'MALWARE', 'CARRIER', 'PLUS', 'APEX', 'VPNOnly']
-        },
-        "is_virtual": {
-            "default": False,
-            "type": 'bool'
-        },
-        "performance_tier": {
-            "choices": ['FTDv', 'FTDv5', 'FTDv10', 'FTDv20', 'FTDv30', 'FTDv50', 'FTDv100'],
-            "type": 'str'
-        },
+        "region": {"default": "us", "choices": ['us', 'eu', 'apj'], "type": 'str'},
+        # "device_type": {"default": "all", "choices": ['asa', 'ftd', 'ios', 'meraki', 'all'], "type": 'str'},
+        # "action": {"default": "list", "choices": ['specific_device', 'list', 'add', 'remove'], "type": 'str'},
+        # "filter": {"default": "", "type": 'str'},
+        # "name": {"default": "", "type": 'str'},
+        # "ipv4": {"default": "", "type": 'str'},
+        # "port": {"default": 443, "type": 'int'},
+        # "sdc": {"default": "", "type": 'str'},
+        # "retry": {"default": 10, "type": 'int'},
+        # "delay": {"default": 1, "type": 'int'},
+        # "username": {"default": "", "type": 'str'},
+        # "password": {"default": "", "type": 'str'},
+        # "ignore_cert": {"default": False, "type": 'bool'},
+        # "is_virtual": {"default": False, "type": 'bool'},
+        # "onboard_method": {"default": "cli", "choices": ['cli', 'ltp'], "type": 'str'},
+        # "access_control_policy": {"default": "Default Access Control Policy", "type": 'str'},
+        # "license": {
+        #     "type": 'list',
+        #     "choices": ['BASE', 'THREAT', 'URLFilter', 'MALWARE', 'CARRIER', 'PLUS', 'APEX', 'VPNOnly']
+        # },
+        # "performance_tier": {
+        #     "choices": ['FTDv', 'FTDv5', 'FTDv10', 'FTDv20', 'FTDv30', 'FTDv50', 'FTDv100'],
+        #     "type": 'str'
+        # },
     }
-
+    logger.debug(f"Version: {__version__}")
     # based on the playbook "action" parameter
     action_map = {
-        "specific_device": get_specific_device,
+        # "specific_device": get_specific_device,
         "list": get_inventory_summary,
-        "add": add_device,
+        # "add": add_device,
         "remove": remove_inventory
     }
 
     # Instantiate the module
     module = AnsibleModule(argument_spec=fields)
-
+    logger.debug(f"COMMANDS:")
+    logger.debug(f"COMMANDS {module.params}")
     # The API endpoint we will hit based on region
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
 
@@ -319,12 +372,22 @@ def main():
     )
 
     # Create the common HTTP Headers
-    http_session = CDORequests.create_session(module.params.get('api_key'), version)
+    # TODO provide module versioning, not ansible version
+    http_session = CDORequests.create_session(module.params.get('api_key'), __version__)
 
     # Execute the function based on the action and pass the input parameters
-    api_result = action_map.get(module.params.get('action'))(module, http_session, endpoint)
+    if module.params.get('add_asa') is not None:
+        # api_result = add_device(module, http_session, endpoint
+        result['stdout'] = add_asa(module.params.get('add_asa'),  http_session, endpoint)
+        result['changed'] = True
+    elif module.params.get('add_ftd') is not None:
+        result['stdout'] = add_ftd(module.params.get('add_ftd'), http_session, endpoint)
+        result['changed'] = True
+
+    # api_result = action_map.get(module.params.get('action'))(module, http_session, endpoint)
     # Return the module results to the calling playbook
-    result['stdout'] = api_result
+    # result['stdout'] = api_result
+    logger.debug(f"{result['stdout']}")
     result['changed'] = True
     module.exit_json(**result)
 

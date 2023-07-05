@@ -6,13 +6,13 @@
       cisco.cdo.cdo_inventory:
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
         region: 'us'
-        action: 'add'
-        sdc: 'CDO_cisco_aahackne-SDC-1'
-        name: 'Austin'
-        ipv4: '172.30.4.101'
-        port: 8443
-        device_type: 'asa'
-        username: 'myuser'
-        password: 'abc123'
-        ignore_cert: true
+        add_asa:
+          sdc: 'CDO_cisco_aahackne-SDC-1'
+          name: 'Austin'
+          ipv4: '172.30.4.101'
+          port: 8443
+          device_type: 'asa'
+          username: 'myuser'
+          password: 'abc123'
+          ignore_cert: true
       register: added_device

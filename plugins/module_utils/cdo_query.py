@@ -37,8 +37,9 @@ class CDOQuery:
         return {"q": q, "r": r}
 
     @staticmethod
-    def get_lar_query(module: AnsibleModule) -> str | None:
-        filter = module.params.get('sdc')
+    def get_lar_query(module_params: dict) -> str | None:
+        # TODO Search for exact match vs the wildcard below
+        filter = module_params['sdc']
         if filter is not None:
             return f"name:*{filter}* OR ipv4:*{filter}*"
 

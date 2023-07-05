@@ -6,21 +6,19 @@
       cisco.cdo.cdo_inventory:
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
         region: 'us'
-        action: 'add'
-        onboard_method: 'cli'
-        access_control_policy: 'Default Access Control Policy'
-        name: 'Austin'
-        device_type: 'ftd'
-        is_virtual: true
-        performance_tier: FTDv10
-        license:
-          - BASE
-          - THREAT
-          - URLFilter
-          - MALWARE
-          - PLUS
+        add_ftd:
+          onboard_method: 'cli'
+          access_control_policy: 'Default Access Control Policy'
+          name: 'Austin'
+          is_virtual: true
+          performance_tier: FTDv10
+          license:
+            - BASE
+            - THREAT
+            - URLFilter
+            - MALWARE
+            - PLUS
       register: added_device
-
     - name: Print results
       ansible.builtin.debug:
         msg:
