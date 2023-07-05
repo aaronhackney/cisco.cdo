@@ -21,13 +21,12 @@ version = "1.0.0"
 
 
 def connectivity_poll(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str) -> bool:
-    """ Get the device until connectivit has been established or fail after retry attempts have expired"""
-
+    """ Check device connectivity or fail after retry attempts have expired"""
     for i in range(module.params.get('retry')):
-        status_code, device = get_device(http_session, endpoint, uid)
+        device = get_device(http_session, endpoint, uid)
         if device['connectivityState'] == -2:
             if module.params.get('ignore_cert'):
-                status_code, result = update_device(http_session, endpoint, uid, data={"ignoreCertificate": True})
+                update_device(http_session, endpoint, uid, data={"ignoreCertificate": True})
                 return True
             else:
                 # TODO: Delete the device we just attempted to add....
@@ -42,8 +41,9 @@ def connectivity_poll(module: AnsibleModule, http_session: requests.session, end
 
 
 def credentails_polling(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str) -> bool:
+    """ Check credentials have been used successfully  or fail after retry attempts have expired"""
     for i in range(module.params.get('retry')):
-        status_code, result = CDORequests.get(
+        result = CDORequests.get(
             http_session, f"https://{endpoint}", path=f"{CDOAPI.ASA_CONFIG.value}/{uid}")
         if result['state'] == "BAD_CREDENTIALS":
             raise cdo_errors.CredentialsFailure(
@@ -56,15 +56,12 @@ def credentails_polling(module: AnsibleModule, http_session: requests.session, e
 
 
 def new_ftd_polling(module: AnsibleModule, http_session: requests.session, endpoint: str, uid: str):
+    """ Check that the new FTD specific device has been created before attempting move to the onboarding step """
     for i in range(module.params.get('retry')):
-        logger.debug("Running ftd poller")
         try:
-            status_code, result = get_specific_device(http_session, endpoint, uid)
-            if status_code == 200:
-                return status_code, result
+            return get_specific_device(http_session, endpoint, uid)
         except cdo_errors.DeviceNotFound:
             sleep(module.params.get('delay'))
-            logger.debug(f"Device not found")
             continue
     raise cdo_errors.AddDeviceFailure(f"Failed to add FTD {module.params.get('name')}")
 
@@ -79,12 +76,13 @@ def get_lar_list(module: AnsibleModule, http_session: requests.session, endpoint
 
 
 def get_cdfmc(http_session: requests.session, endpoint: str):
+    """ Get the cdFMC object for this tenant if one exists """
     query = CDOQuery.get_cdfmc_query()
-    status_code, response = CDORequests.get(
+    response = CDORequests.get(
         http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}?q={query['q']}")
     if len(response) == 0:
         raise cdo_errors.DeviceNotFound("A cdFMC was not found in this tenant")
-    return status_code, response[0]
+    return response[0]
 
 
 def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, cdfmc_host: str, domain_uid: str,
@@ -92,30 +90,31 @@ def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, 
     http_session.headers['fmc-hostname'] = cdfmc_host
     path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
     path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
-    status_code, response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
+    response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
     if response['paging']['count'] == 0:
         if access_list_name is not None:
             raise cdo_errors.ObjectNotFound(f"Access Policy {access_list_name} not found on cdFMC.")
-    return status_code, response
+    return response
 
 
 def get_device(http_session: requests.session, endpoint: str, uid: str):
-    """ Given a device uid, retreive the device specific details """
-    status_code, result = CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}")
-    return status_code, result
+    """ Given a device uid, retreive the specific device model of the device """
+    return CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}")
 
 
 def update_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
-    status_code, result = CDORequests.put(
-        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}", data=data)
-    return status_code, result
+    """ Update an eixsting device's attributes """
+    return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}", data=data)
+
+
+def update_ftd_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
+    return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.FTDS.value}/{uid}", data=data)
 
 
 def get_specific_device(http_session: requests.session, endpoint: str, uid: str) -> str:
     """ Given a device uid, retreive the device specific details """
     path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid)
-    status_code, result = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-    return status_code, result
+    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
 def get_inventory_summary(module: AnsibleModule, http_session: requests.session, endpoint: str, filter: str = None,
@@ -126,16 +125,15 @@ def get_inventory_summary(module: AnsibleModule, http_session: requests.session,
     q = urllib.parse.quote_plus(query['q'])
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
-    status_code, response_json = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-    return response_json
+    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
 def add_ftd(module: AnsibleModule, http_session: requests.session, endpoint: str):
     # Get cdFMC details
-    status_code, cdfmc = get_cdfmc(http_session, endpoint)
-    status_code, cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
+    cdfmc = get_cdfmc(http_session, endpoint)
+    cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
     # Should I be getting these from the fmc collection?
-    status_code, acess_policy = get_cdfmc_access_policy_list(
+    acess_policy = get_cdfmc_access_policy_list(
         http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
         access_list_name=module.params.get('access_control_policy'))
 
@@ -153,29 +151,24 @@ def add_ftd(module: AnsibleModule, http_session: requests.session, endpoint: str
         'state': 'NEW',
         'type': 'devices'
     }
-    logger.debug(f"payload: {device_data}")
     # Create the device
-    status_code, new_device = CDORequests.post(
-        http_session, f"https://{endpoint}", path=CDOAPI.DEVICES.value, data=device_data)
+    new_device = CDORequests.post(http_session, f"https://{endpoint}", path=CDOAPI.DEVICES.value, data=device_data)
 
     # Wait for it to be created and return the specific device model
-    status_code, result = new_ftd_polling(module, http_session, endpoint, new_device['uid'])
+    result = new_ftd_polling(module, http_session, endpoint, new_device['uid'])
 
     # Enable FTD onboarding on the cdFMC using the specific device uid
-    status_code, result = CDORequests.put(
-        http_session, f"https://{endpoint}", path=f"{CDOAPI.FTDS.value}/{result['uid']}",
-        data={"queueTriggerState": "INITIATE_FTDC_ONBOARDING"})
+    update_ftd_device(http_session, endpoint, result['uid'], {"queueTriggerState": "INITIATE_FTDC_ONBOARDING"})
+    result = CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{new_device['uid']}")
 
-    status_code, result = CDORequests.get(
-        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{new_device['uid']}")
     # Get onboarding FTD CLI commands
-    logger.debug(f"CLI Command: {result['metadata']['generatedCommand']}")
+    return f"{module.params.get('name')} CLI Command: {result['metadata']['generatedCommand']}"
 
 
 def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str):
     """ Add ASA or IOS device to CDO"""
 
-    status_code, lar_list = get_lar_list(module, http_session, endpoint)
+    lar_list = get_lar_list(module, http_session, endpoint)
     if len(lar_list) != 1:
         raise (cdo_errors.SDCNotFound(f"Could not find SDC"))
     else:
@@ -194,11 +187,11 @@ def add_asa(module: AnsibleModule, http_session: requests.session, endpoint: str
         device_data['ignore_cert'] = True
 
     path = CDOAPI.DEVICES.value
-    status_code, device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=device_data)
+    device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=device_data)
     connectivity_poll(module, http_session, endpoint, device['uid'])
 
     # Get UID of specific device, encrypt crednetials, send crendtials to SDC
-    status_code, specific_device = get_specific_device(http_session, endpoint, device['uid'])
+    specific_device = get_specific_device(http_session, endpoint, device['uid'])
     creds_crypto = CDOCrypto.encrypt_creds(module.params.get('username'), module.params.get('password'), lar)
     path = f"{CDOAPI.ASA_CONFIG.value}/{specific_device['uid']}"
     CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
@@ -212,9 +205,9 @@ def remove_inventory(data, http_session):
 
 def add_device(module: AnsibleModule, http_session: requests.session, endpoint: str):
     if module.params.get('device_type').upper() == "ASA" or module.params.get('device_type').upper() == "IOS":
-        add_asa(module, http_session, endpoint)
+        return add_asa(module, http_session, endpoint)
     if module.params.get('device_type').upper() == "FTD":
-        add_ftd(module, http_session, endpoint)
+        return add_ftd(module, http_session, endpoint)
 
 
 def main():
@@ -330,9 +323,9 @@ def main():
 
     # Execute the function based on the action and pass the input parameters
     api_result = action_map.get(module.params.get('action'))(module, http_session, endpoint)
-
     # Return the module results to the calling playbook
     result['stdout'] = api_result
+    result['changed'] = True
     module.exit_json(**result)
 
 

@@ -42,21 +42,20 @@ class CDOAPIWrapper(object):
     def __call__(self, fn):
         @wraps(fn)
         def new_func(*args, **kwargs):
-            status_code, response = fn(*args, **kwargs)
-            if status_code == 404:
-                raise DeviceNotFound("404 Device Not Found")
-            elif status_code in range(400, 600):
-                if isinstance(response, dict) and response['errorMessage'].startswith("Duplicate"):
-                    raise DuplicateObject(response['errorMessage'])
-                elif isinstance(response, dict):
-                    raise DuplicateObject(response['errorMessage'])
-                else:
-                    raise APIError(response)
-            return status_code, response
+            try:
+                return fn(*args, **kwargs)
+            except requests.HTTPError as ex:
+                if ex.response.status_code == 404:
+                    logger.debug("Raising DeviceNotFound")
+                    raise DeviceNotFound("404 Device Not Found")
+                elif ex.response.status_code in range(400, 600):
+                    if "Duplicate" in ex.response.text:
+                        raise DuplicateObject(ex.response.text)
+                    else:
+                        logger.debug(f"Raising Generic HTTP Error {ex.response.text}")
+                        raise APIError(ex.response.text)
+
         return new_func
-
-# TODO: return only 1 object from calls (Not status_code seperately)
-
 
 class CDORequests:
     @staticmethod
@@ -73,13 +72,13 @@ class CDORequests:
         """ Given the CDO endpoint, path, and query, return the json payload from the API """
         uri = url if path is None else f"{url}/{path}"
         result = http_session.get(url=uri, headers=http_session.headers, params=query)
-        logger.debug(f"URI: {uri}")
-        logger.debug(result.status_code)
-        logger.debug(result.text)
-        if result.text and result.status_code in range(200, 300):
-            return result.status_code, result.json()
+        # logger.debug(f"GET RESULT: {result.status_code}")
+        # logger.debug(result.text)
+        result.raise_for_status()
+        if result.text:
+            return result.json()
         else:
-            return result.status_code, result.text
+            return result.text
 
     @CDOAPIWrapper()
     @staticmethod
@@ -87,10 +86,12 @@ class CDORequests:
         """ Given the CDO endpoint, path, and query, post the json data and return the json payload from the API """
         uri = url if path is None else f"{url}/{path}"
         result = http_session.post(url=uri, params=query, json=data)
-        if result.text:
-            return result.status_code, result.json()
+        # logger.debug(f"POST: {result.text} STATUS CODE: {result.status_code}")
+        result.raise_for_status()
+        if result.text and result.status_code in range(200, 300):
+            return result.json()
         else:
-            return result.status_code, None
+            return
 
     @CDOAPIWrapper()
     @staticmethod
@@ -98,12 +99,13 @@ class CDORequests:
         """ Given the CDO endpoint, path, and query, return the json payload from the API """
         uri = url if path is None else f"{url}/{path}"
         result = http_session.put(url=uri, headers=http_session.headers, params=query, json=data)
+        result.raise_for_status()
         # logger.debug(result.status_code)
         # logger.debug(result.text)
         if result.text and result.status_code in range(200, 300):
-            return result.status_code, result.json()
+            return result.json()
         else:
-            return result.status_code, None
+            return
 
     @CDOAPIWrapper()
     @staticmethod

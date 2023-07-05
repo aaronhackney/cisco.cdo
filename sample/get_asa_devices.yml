@@ -31,4 +31,3 @@
         jmesquery: >-
           [*].{name: name, serial:serial, chassisSerial:chassisSerial, softwareVersion: softwareVersion, type:type,
           deviceType:deviceType, uid:uid, ipv4:ipv4, port:port, ignoreCertificate:ignoreCertificate}
-

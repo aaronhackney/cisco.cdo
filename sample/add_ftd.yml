@@ -20,3 +20,8 @@
           - MALWARE
           - PLUS
       register: added_device
+
+    - name: Print results
+      ansible.builtin.debug:
+        msg:
+          "{{ added_device }}"
