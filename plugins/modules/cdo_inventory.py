@@ -83,7 +83,7 @@ EXAMPLES = r'''
       register: added_device
 
 ---
-- name: Add ASA CDO inventory
+- name: Add ASA to CDO inventory
   hosts: localhost
   tasks:
     - name: Add ASA to CDO
@@ -100,7 +100,25 @@ EXAMPLES = r'''
           password: 'abc123'
           ignore_cert: true
       register: added_device
-      
+
+---
+- name: Add IOS to CDO inventory
+  hosts: localhost
+  tasks:
+    - name: Add IOS to CDO
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        add_asa_ios:
+          sdc: 'CDO_cisco_aahackne-SDC-1'
+          name: 'Austin-CSR-1000v'
+          ipv4: '172.30.4.250'
+          port: 22
+          device_type: 'ios'
+          username: 'myuser'
+          password: 'abc123'
+          ignore_cert: true
+      register: added_device    
 ---
 - name: Get device inventory details
   hosts: localhost
@@ -142,15 +160,12 @@ __version__ = "1.0.0"
 
 # Remove for publishing....
 logger = logging.getLogger('cdo_inventory')
-logger.setLevel(logging.DEBUG)
 fh = logging.FileHandler('/tmp/cdo_inventory.log')
-fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
 
 def connectivity_poll(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
     """ Check device connectivity or fail after retry attempts have expired"""
-    logger.debug("Running connectivity Poll....")
     for i in range(module_params['retry']):
         device = get_device(http_session, endpoint, uid)
         if device['connectivityState'] == -2:
@@ -169,13 +184,11 @@ def connectivity_poll(module_params: dict, http_session: requests.session, endpo
     )
 
 
-def credentails_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
+def asa_credentails_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
     """ Check credentials have been used successfully  or fail after retry attempts have expired"""
-    logger.debug("checking credneitals...")
     for i in range(module_params['retry']):
         result = CDORequests.get(
             http_session, f"https://{endpoint}", path=f"{CDOAPI.ASA_CONFIG.value}/{uid}")
-        logger.debug(f"Attempt: {i} - result: {result}")
         if result['state'] == "BAD_CREDENTIALS":
             raise cdo_errors.CredentialsFailure(
                 f"Credentials provided for device {module_params['name']} were rejected.")
@@ -184,6 +197,18 @@ def credentails_polling(module_params: dict, http_session: requests.session, end
         sleep(module_params['delay'])
     raise cdo_errors.APIError(
         f"Credentials for device {module_params['name']} were sent but we never reached a known good state.")
+
+
+def ios_credentials_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> True:
+    for i in range(module_params['retry']):
+        device = get_device(http_session, endpoint, uid)
+        if device['connectivityState'] == -5:
+            sleep(module_params['delay'])
+        elif device['connectivityError'] is not None:
+            raise cdo_errors.CredentialsFailure(device['connectivityError'])
+        elif device['connectivityState'] > 0:
+            return True
+    raise cdo_errors.CredentialsFailure(f"Device remains in connectivity state {device['connectivityState']}")
 
 
 def new_ftd_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str):
@@ -255,7 +280,6 @@ def inventory(module_params: dict, http_session: requests.session, endpoint: str
     """ Get CDO inventory """
     # TODO: Support paging
     query = CDOQuery.get_inventory_query(module_params)
-    logger.debug(f"Filter: {query}")
     q = urllib.parse.quote_plus(query['q'])
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
@@ -322,26 +346,21 @@ def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: s
     path = CDOAPI.DEVICES.value
     device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=asa_ios_device.asdict())
     connectivity_poll(module_params, http_session, endpoint, device['uid'])
-    logger.debug("Ran connectivity Poll....")
-
-    logger.debug("Getting Specific Device....")
-    # Get UID of specific device, encrypt crednetials, send crendtials to SDC
-    specific_device = get_specific_device(http_session, endpoint, device['uid'])
-
-    logger.debug("Encrypting credentials...")
-    # TODO: Factor this section for IOS password and polling....
-    # GET CDOAPI.DEVICES/uid
-    # connectivityError: null
-    # connectivityError: "Failed: Failed to authenticate with host 172.30.4.250:22"
-    # connectivityState -5
-    #
-    # Done is:
-    # connectivityState 1
 
     creds_crypto = CDOCrypto.encrypt_creds(module_params['username'], module_params['password'], lar)
-    path = f"{CDOAPI.ASA_CONFIG.value}/{specific_device['uid']}"
-    CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
-    credentails_polling(module_params, http_session, endpoint, specific_device['uid'])
+
+    # Get UID of specific device, encrypt crednetials, send crendtials to SDC
+    if module_params['device_type'].upper() == "ASA":
+        creds_crypto['state'] = "CERT_VALIDATED"
+        specific_device = get_specific_device(http_session, endpoint, device['uid'])
+        path = f"{CDOAPI.ASA_CONFIG.value}/{specific_device['uid']}"
+        CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
+        asa_credentails_polling(module_params, http_session, endpoint, specific_device['uid'])
+    elif module_params['device_type'].upper() == "IOS":
+        creds_crypto['stateMachineContext'] = {"acceptCert": True}
+        path = f"{CDOAPI.DEVICES.value}/{device['uid']}"
+        CDORequests.put(http_session, f"https://{endpoint}", path=path, data=creds_crypto)
+        ios_credentials_polling(module_params, http_session, endpoint, device['uid'])
 
 
 def main():
@@ -372,7 +391,6 @@ def main():
     # Execute the function based on the action and pass the input parameters
     if module.params.get('inventory') is not None:
         result['stdout'] = inventory(module.params.get('inventory'),  http_session, endpoint)
-        logger.debug(f"Inventory: {inventory(module.params.get('inventory'),  http_session, endpoint)}")
         result['changed'] = False
     elif module.params.get('add_asa_ios') is not None:
         # api_result = add_device(module, http_session, endpoint

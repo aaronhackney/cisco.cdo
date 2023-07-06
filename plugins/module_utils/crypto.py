@@ -18,7 +18,4 @@ class CDOCrypto:
             "password": base64.b64encode(encryptor.encrypt(password.encode(encoding="UTF-8"))).decode()
         })
 
-        return {
-            "credentials": enc_creds,
-            "state": "CERT_VALIDATED"
-        }
+        return {"credentials": enc_creds}
