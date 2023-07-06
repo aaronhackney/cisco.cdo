@@ -4,8 +4,8 @@ INVENTORY_ARGUMENT_SPEC = {
                           "filter": {"type": "str"},
                           "device_type": {"default": "all", "choices": ["all", "asa", "ios", "ftd", "fmc"]}
                   }},
-    "add_asa": {"type": "dict",
-                "options": {
+    "add_asa_ios": {"type": "dict",
+                    "options": {
                         "name": {"default": "", "type": "str"},
                         "ipv4": {"default": "", "type": "str"},
                         "port": {"default": 443, "type": "int"},
@@ -13,10 +13,10 @@ INVENTORY_ARGUMENT_SPEC = {
                         "username": {"default": "", "type": "str"},
                         "password": {"default": "", "type": "str"},
                         "ignore_cert": {"default": False, "type": "bool"},
-                        "device_type": {"default": "asa", "choices": ["asa"], "type": "str"},
+                        "device_type": {"default": "asa", "choices": ["asa", "ios"], "type": "str"},
                         "retry": {"default": 10, "type": "int"},
                         "delay": {"default": 1, "type": "int"},
-                }},
+                    }},
     "add_ftd": {"type": "dict",
                 "options": {
                         "name": {"required": True, "type": "str"},
@@ -38,6 +38,6 @@ INVENTORY_ARGUMENT_SPEC = {
     "region": {"default": "us", "choices": ["us", "eu", "apj"], "type": "str"},
 }
 
-REQUIRED_ONE_OF = ["inventory", "add_asa", "add_ftd"]
+REQUIRED_ONE_OF = ["inventory", "add_asa_ios", "add_ftd"]
 
 MUTUALLY_EXCLUSIVE = []

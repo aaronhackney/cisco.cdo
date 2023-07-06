@@ -126,6 +126,7 @@ from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
 from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
+from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel, FTDMetaData, ASAIOSModel
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     INVENTORY_ARGUMENT_SPEC,
     REQUIRED_ONE_OF,
@@ -149,6 +150,7 @@ logger.addHandler(fh)
 
 def connectivity_poll(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
     """ Check device connectivity or fail after retry attempts have expired"""
+    logger.debug("Running connectivity Poll....")
     for i in range(module_params['retry']):
         device = get_device(http_session, endpoint, uid)
         if device['connectivityState'] == -2:
@@ -169,9 +171,11 @@ def connectivity_poll(module_params: dict, http_session: requests.session, endpo
 
 def credentails_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
     """ Check credentials have been used successfully  or fail after retry attempts have expired"""
+    logger.debug("checking credneitals...")
     for i in range(module_params['retry']):
         result = CDORequests.get(
             http_session, f"https://{endpoint}", path=f"{CDOAPI.ASA_CONFIG.value}/{uid}")
+        logger.debug(f"Attempt: {i} - result: {result}")
         if result['state'] == "BAD_CREDENTIALS":
             raise cdo_errors.CredentialsFailure(
                 f"Credentials provided for device {module_params['name']} were rejected.")
@@ -262,27 +266,26 @@ def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
     # Get cdFMC details
     cdfmc = get_cdfmc(http_session, endpoint)
     cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
-    # Should I be getting these from the fmc collection?
-    acess_policy = get_cdfmc_access_policy_list(
+
+    # TODO: Get these from the fmc collection when it supports cdFMC
+    access_policy = get_cdfmc_access_policy_list(
         http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
         access_list_name=module_params['access_control_policy'])
 
-    device_data = {
-        'name': module_params['name'],
-        'associatedDeviceUid': cdfmc['uid'],
-        'metadata': {
-            'accessPolicyName': acess_policy['items'][0]['name'],
-            'accessPolicyUuid': acess_policy['items'][0]['id'],
-            'license_caps': ','.join(module_params['license']),
-            'performanceTier': module_params['performance_tier']
-        },
-        'deviceType': 'FTDC',
-        'model': "false",
-        'state': 'NEW',
-        'type': 'devices'
-    }
+    ftd_device = FTDModel(
+        name=module_params['name'],
+        associatedDeviceUid=cdfmc['uid'],
+        metadata=FTDMetaData(
+            accessPolicyName=access_policy['items'][0]['name'],
+            accessPolicyUuid=access_policy['items'][0]['id'],
+            license_caps=','.join(module_params['license']),
+            performanceTier=module_params['performance_tier']
+        ),
+    )
+
     # Create the device
-    new_device = CDORequests.post(http_session, f"https://{endpoint}", path=CDOAPI.DEVICES.value, data=device_data)
+    new_device = CDORequests.post(http_session, f"https://{endpoint}",
+                                  path=CDOAPI.DEVICES.value, data=ftd_device.asdict())
 
     # Wait for it to be created and return the specific device model
     result = new_ftd_polling(module_params, http_session, endpoint, new_device['uid'])
@@ -295,7 +298,7 @@ def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
     return f"{module_params['name']} CLI Command: {result['metadata']['generatedCommand']}"
 
 
-def add_asa(module_params: dict, http_session: requests.session, endpoint: str):
+def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: str):
     """ Add ASA or IOS device to CDO"""
 
     lar_list = get_lar_list(module_params, http_session, endpoint)
@@ -304,25 +307,36 @@ def add_asa(module_params: dict, http_session: requests.session, endpoint: str):
     else:
         lar = lar_list[0]
 
-    device_data = {
-        'deviceType': module_params['device_type'].upper(),
-        'host': module_params['ipv4'],
-        'ipv4': f"{module_params['ipv4']}:{module_params['port']}",
-        'larType': 'CDG' if lar['cdg'] else 'SDC',
-        'larUid': lar['uid'],
-        'model': False,
-        'name': module_params['name'],
-    }
+    asa_ios_device = ASAIOSModel(deviceType=module_params['device_type'].upper(),
+                                 host=module_params['ipv4'],
+                                 ipv4=f"{module_params['ipv4']}:{module_params['port']}",
+                                 larType='CDG' if lar['cdg'] else 'SDC',
+                                 larUid=lar['uid'],
+                                 model=False,
+                                 name=module_params['name']
+                                 )
 
     if module_params['ignore_cert']:
-        device_data['ignore_cert'] = True
+        asa_ios_device.ignore_cert = False
 
     path = CDOAPI.DEVICES.value
-    device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=device_data)
+    device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=asa_ios_device.asdict())
     connectivity_poll(module_params, http_session, endpoint, device['uid'])
+    logger.debug("Ran connectivity Poll....")
 
+    logger.debug("Getting Specific Device....")
     # Get UID of specific device, encrypt crednetials, send crendtials to SDC
     specific_device = get_specific_device(http_session, endpoint, device['uid'])
+
+    logger.debug("Encrypting credentials...")
+    # TODO: Factor this section for IOS password and polling....
+    # GET CDOAPI.DEVICES/uid
+    # connectivityError: null
+    # connectivityError: "Failed: Failed to authenticate with host 172.30.4.250:22"
+    # connectivityState -5
+    #
+    # Done is:
+    # connectivityState 1
 
     creds_crypto = CDOCrypto.encrypt_creds(module_params['username'], module_params['password'], lar)
     path = f"{CDOAPI.ASA_CONFIG.value}/{specific_device['uid']}"
@@ -360,9 +374,9 @@ def main():
         result['stdout'] = inventory(module.params.get('inventory'),  http_session, endpoint)
         logger.debug(f"Inventory: {inventory(module.params.get('inventory'),  http_session, endpoint)}")
         result['changed'] = False
-    elif module.params.get('add_asa') is not None:
+    elif module.params.get('add_asa_ios') is not None:
         # api_result = add_device(module, http_session, endpoint
-        result['stdout'] = add_asa(module.params.get('add_asa'),  http_session, endpoint)
+        result['stdout'] = add_asa_ios(module.params.get('add_asa_ios'),  http_session, endpoint)
         result['changed'] = True
     elif module.params.get('add_ftd') is not None:
         result['stdout'] = add_ftd(module.params.get('add_ftd'), http_session, endpoint)
