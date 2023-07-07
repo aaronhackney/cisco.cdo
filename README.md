@@ -54,5 +54,5 @@ Release notes are available [here](https://github.com/ansible-collections/cisco.
 ## Roadmap
 <!-- Optional. Include the roadmap for this collection, and the proposed release/versioning strategy so users can anticipate the upgrade/update cycle. -->
 ## Licensing
-GNU General Public License v3.0 or later.
-See [LICENSE](https://www.gnu.org/licenses/gpl-3.0.txt) to see the full text.
+Apache License Version 2.0 or later.
+See [LICENSE](http://www.apache.org/licenses/) to see the full text.
