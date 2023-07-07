@@ -23,7 +23,7 @@ class CDOQuery:
             if extra_filter is not None:
                 q = f"{q} {extra_filter}"
         elif device_type is None or device_type == "all":
-            q = "(model:false) AND (NOT deviceType:FMCE)"
+            q = "(model:false)"
         elif device_type == 'asa' or device_type == 'ios':
             q = f"((model:false) AND (deviceType:{device_type.upper()})) AND (NOT deviceType:FMCE)"
         elif device_type == 'ftd':
