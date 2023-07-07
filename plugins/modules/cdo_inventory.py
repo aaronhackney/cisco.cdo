@@ -138,7 +138,12 @@ EXAMPLES = r'''
 '''
 
 # fmt: off 
+# Remove for publishing....
 import logging
+logging.basicConfig(filename='/tmp/cdo_inventory.log', encoding='utf-8', level=logging.DEBUG)
+# fmt: on
+
+# fmt: off 
 from time import sleep
 from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
 from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
@@ -157,11 +162,6 @@ import requests
 # fmt: on
 
 __version__ = "1.0.0"
-
-# Remove for publishing....
-logger = logging.getLogger('cdo_inventory')
-fh = logging.FileHandler('/tmp/cdo_inventory.log')
-logger.addHandler(fh)
 
 
 def connectivity_poll(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
@@ -245,7 +245,7 @@ def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, 
                                  limit: int = 50, offset: int = 0, access_list_name=None):
     """ Given the domain uuid of the cdFMC, retreive the list of access policies """
     # TODO: use the FMC collection to retrieve this
-    http_session.headers['fmc-hostname'] = cdfmc_host  # This header is the magic that hits cdFMC api and not CDO API
+    http_session.headers['fmc-hostname'] = cdfmc_host
     path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
     path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
     response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
@@ -269,21 +269,58 @@ def update_ftd_device(http_session: requests.session, endpoint: str, uid: str, d
     return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.FTDS.value}/{uid}", data=data)
 
 
+def working_set(http_session: requests.session, endpoint: str, uid: str):
+    data = {"selectedModelObjects": [{"modelClassKey": "targets/devices", "uuids": [uid]}],
+            "workingSetFilterAttributes": []}
+    return CDORequests.post(http_session, f"https://{endpoint}", path=f"{CDOAPI.WORKSET.value}", data=data)
+
+
 def get_specific_device(http_session: requests.session, endpoint: str, uid: str) -> str:
     """ Given a device uid, retreive the device specific details """
     path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid)
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
-def inventory(module_params: dict, http_session: requests.session, endpoint: str, filter: str = None,
+def inventory(module_params: dict, http_session: requests.session, endpoint: str, extra_filter: str = None,
               limit: int = 50, offset: int = 0) -> str:
     """ Get CDO inventory """
     # TODO: Support paging
-    query = CDOQuery.get_inventory_query(module_params)
+    query = CDOQuery.get_inventory_query(module_params, extra_filter=extra_filter)
     q = urllib.parse.quote_plus(query['q'])
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
+
+
+def find_device_for_deletion(module_params: dict, http_session: requests.session, endpoint: str):
+    if module_params['device_type'].upper() == "FTD":
+        extra_filter = "AND (deviceType:FTDC)"
+    else:
+        extra_filter = f"AND (deviceType:{module_params['device_type'].upper()})"
+    module_params['filter'] = module_params['name']
+    device_list = inventory(module_params, http_session, endpoint, extra_filter=extra_filter)
+    if len(device_list) < 1:
+        raise cdo_errors.DeviceNotFound(f"Cannot delete {module_params['name']} - device by that name not found")
+    elif len(device_list) > 1:
+        raise cdo_errors.TooManyMatches(f"Cannot delete {module_params['name']} - more than 1 device matches name")
+    else:
+        return device_list[0]
+
+
+def delete_device(module_params: dict, http_session: requests.session, endpoint: str):
+    device = find_device_for_deletion(module_params, http_session, endpoint)
+    working_set(http_session, endpoint, device['uid'])
+    if module_params['device_type'].upper() == "ASA" or module_params['device_type'].upper() == "IOS":
+        CDORequests.delete(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{device['uid']}")
+    elif module_params['device_type'].upper() == "FTD":
+        cdfmc = get_cdfmc(http_session, endpoint)
+        cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
+        data = {
+            "queueTriggerState": "PENDING_DELETE_FTDC",
+            "stateMachineContext": {"ftdCDeviceIDs": f"{device['uid']}"}
+        }
+        result = CDORequests.put(http_session, f"https://{endpoint}",
+                                 path=f"{CDOAPI.FMC.value}/{cdfmc_specific_device['uid']}", data=data)
 
 
 def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
@@ -304,7 +341,7 @@ def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
             accessPolicyUuid=access_policy['items'][0]['id'],
             license_caps=','.join(module_params['license']),
             performanceTier=module_params['performance_tier']
-        ),
+        )
     )
 
     # Create the device
@@ -364,7 +401,6 @@ def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: s
 
 
 def main():
-
     # Instantiate the module
     module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
                            REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE)
@@ -385,7 +421,6 @@ def main():
     )
 
     # Create the HTTP session and headers
-    # TODO provide module versioning, not ansible version
     http_session = CDORequests.create_session(module.params.get('api_key'), __version__)
 
     # Execute the function based on the action and pass the input parameters
@@ -399,7 +434,9 @@ def main():
     elif module.params.get('add_ftd') is not None:
         result['stdout'] = add_ftd(module.params.get('add_ftd'), http_session, endpoint)
         result['changed'] = True
-
+    elif module.params.get('delete') is not None:
+        result['stdout'] = delete_device(module.params.get('delete'), http_session, endpoint)
+        result['changed'] = True
     # Return the module results to the calling playbook
     module.exit_json(**result)
 
