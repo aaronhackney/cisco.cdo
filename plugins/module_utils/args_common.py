@@ -4,6 +4,12 @@ INVENTORY_ARGUMENT_SPEC = {
                           "filter": {"type": "str"},
                           "device_type": {"default": "all", "choices": ["all", "asa", "ios", "ftd", "fmc"]}
                   }},
+    "delete": {"type": "dict",
+               "options": {
+                   "filter": {"type": "str"},
+                   "name": {"required": True, "type": "str"},
+                   "device_type": {"required": True, "choices": ["asa", "ios", "ftd"], "type": "str"}
+               }},
     "add_asa_ios": {"type": "dict",
                     "options": {
                         "name": {"default": "", "type": "str"},
@@ -38,6 +44,6 @@ INVENTORY_ARGUMENT_SPEC = {
     "region": {"default": "us", "choices": ["us", "eu", "apj"], "type": "str"},
 }
 
-REQUIRED_ONE_OF = ["inventory", "add_asa_ios", "add_ftd"]
+REQUIRED_ONE_OF = ["inventory", "add_asa_ios", "add_ftd", "delete"]
 
 MUTUALLY_EXCLUSIVE = []

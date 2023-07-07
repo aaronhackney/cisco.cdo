@@ -4,11 +4,11 @@
 
 The Ansible Cisco CDO collection includes a variety of Ansible content to help automate the interaction with the Cisco Defense Orcestrator (CDO) platform and the devices managed by the CDO platform.
 
+This is a work in progress and more modules and functionality will be added in subsequent releases.
+
 ## Ansible version compatibility
 
-This collection has been tested against following Ansible versions: **>=2.9.10**.  
-
-For collections that support Ansible 2.9, please ensure you update your network_os to use the fully qualified collection name (for example, cisco.ios.ios). Plugins and modules within a collection may be tested with only specific Ansible versions. A collection may contain metadata that identifies these versions. PEP440 is the schema used to describe the versions of Ansible.
+This collection has been tested against following Ansible versions: **>=2.9.10** and should work in 2.9+
 
 ## External requirements
 ### Cisco Defense Orcestrator API Key
