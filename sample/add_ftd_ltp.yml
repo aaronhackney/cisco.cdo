@@ -1,0 +1,23 @@
+---
+- name: Add FTD CDO inventory
+  hosts: localhost
+  tasks:
+    - name: Add FTD to CDO and cdFMC
+      cisco.cdo.cdo_inventory:
+        api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
+        region: 'us'
+        add_ftd:
+          onboard_method: 'ltp'
+          access_control_policy: 'Default Access Control Policy'
+          name: 'ElPaso'
+          license:
+            - BASE
+            - THREAT
+            - URLFilter
+            - MALWARE
+            - PLUS
+      register: added_device
+    - name: Print results
+      ansible.builtin.debug:
+        msg:
+          "{{ added_device }}"

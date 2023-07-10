@@ -3,16 +3,9 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import requests
-import json
 from enum import Enum
 from functools import wraps
 from .errors import DuplicateObject, APIError, DeviceNotFound
-
-# fmt: off 
-# Remove for publishing....
-import logging
-logging.basicConfig(filename='/tmp/cdo_requests.log', encoding='utf-8', level=logging.DEBUG)
-# fmt: on
 
 
 class CDORegions(Enum):
