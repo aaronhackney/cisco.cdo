@@ -3,7 +3,7 @@
   hosts: localhost
   tasks:
     - name: Add IOS Device to CDO
-      cisco.cdo.cdo_inventory:
+      cisco.cdo.add_asa_ios:
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
         region: 'us'
         add_asa_ios:
@@ -16,3 +16,8 @@
           password: 'abc123'
           ignore_cert: true
       register: added_device
+
+    - name: Print results
+      ansible.builtin.debug:
+        msg:
+          "{{ added_device }}"

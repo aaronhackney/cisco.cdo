@@ -9,7 +9,7 @@ __metaclass__ = type
 
 DOCUMENTATION = r'''
 ---
-module: cdo_inventory
+module: inventory
 
 short_description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO).
 
@@ -137,7 +137,7 @@ EXAMPLES = r'''
 import logging
 logger = logging.getLogger('inventory_module')
 logging.basicConfig()
-fh = logging.FileHandler('cdo_inventory_2.log')
+fh = logging.FileHandler('/tmp/cdo_inventory.log')
 fh.setLevel(logging.DEBUG)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(fh)
@@ -153,12 +153,14 @@ from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel,
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     INVENTORY_ARGUMENT_SPEC,
     REQUIRED_ONE_OF,
-    MUTUALLY_EXCLUSIVE
+    MUTUALLY_EXCLUSIVE,
+    REQUIRED_IF
 )
 from ansible.module_utils.basic import AnsibleModule
 import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
 import urllib.parse
 import requests
+import base64
 # fmt: on
 
 __version__ = "1.0.0"
@@ -211,17 +213,6 @@ def ios_credentials_polling(module_params: dict, http_session: requests.session,
     raise cdo_errors.CredentialsFailure(f"Device remains in connectivity state {device['connectivityState']}")
 
 
-def new_ftd_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str):
-    """ Check that the new FTD specific device has been created before attempting move to the onboarding step """
-    for i in range(module_params['retry']):
-        try:
-            return get_specific_device(http_session, endpoint, uid)
-        except cdo_errors.DeviceNotFound:
-            sleep(module_params['delay'])
-            continue
-    raise cdo_errors.AddDeviceFailure(f"Failed to add FTD {module_params['name']}")
-
-
 def get_lar_list(module_params: dict, http_session: requests.session, endpoint: str):
     """ Return a list of lars (SDC/CDG from CDO) """
     path = CDOAPI.LARS.value
@@ -241,20 +232,6 @@ def get_cdfmc(http_session: requests.session, endpoint: str):
     return response[0]
 
 
-def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, cdfmc_host: str, domain_uid: str,
-                                 limit: int = 50, offset: int = 0, access_list_name=None):
-    """ Given the domain uuid of the cdFMC, retreive the list of access policies """
-    # TODO: use the FMC collection to retrieve this
-    http_session.headers['fmc-hostname'] = cdfmc_host
-    path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
-    path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
-    response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-    if response['paging']['count'] == 0:
-        if access_list_name is not None:
-            raise cdo_errors.ObjectNotFound(f"Access Policy {access_list_name} not found on cdFMC.")
-    return response
-
-
 def get_device(http_session: requests.session, endpoint: str, uid: str):
     """ Given a device uid, retreive the specific device model of the device """
     return CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}")
@@ -263,10 +240,6 @@ def get_device(http_session: requests.session, endpoint: str, uid: str):
 def update_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
     """ Update an eixsting device's attributes """
     return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}", data=data)
-
-
-def update_ftd_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
-    return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.FTDS.value}/{uid}", data=data)
 
 
 def working_set(http_session: requests.session, endpoint: str, uid: str):
@@ -283,8 +256,9 @@ def get_specific_device(http_session: requests.session, endpoint: str, uid: str)
 
 def inventory_count(http_session: requests.session, endpoint: str, filter: str = None):
     """Given a filter criteria, return the number of devices that match the criteria"""
-    logger.debug(CDORequests.get(http_session, f"https://{endpoint}", path="f{CDOAPI.DEVICES}?agg=count&q={filter}"))
-    return CDORequests.get(http_session, f"https://{endpoint}", path="f{CDOAPI.DEVICES}?agg=count&q={filter}")
+    return CDORequests.get(
+        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}?agg=count&q={filter}"
+    )['aggregationQueryResult']
 
 
 def inventory(module_params: dict, http_session: requests.session, endpoint: str, extra_filter: str = None,
@@ -327,56 +301,6 @@ def delete_device(module_params: dict, http_session: requests.session, endpoint:
         }
         result = CDORequests.put(http_session, f"https://{endpoint}",
                                  path=f"{CDOAPI.FMC.value}/{cdfmc_specific_device['uid']}", data=data)
-
-
-def add_ftd_ltp(module_params: dict, http_session: requests.session, endpoint: str, ftd_device: FTDModel):
-    """ Onboard an FTD to cdFMC using LTP (serial number onboarding)"""
-    # serial:JAD245008W2
-    count = inventory_count(http_session, endpoint, filter=f"serial:{module_params['serial']}")
-    logger.debug(f"Count by serial: {count}")
-    count = inventory_count(http_session, endpoint, filter=f"name:{module_params['serial']}")
-    logger.debug(f"Count by name: {count}")
-
-
-def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
-    logger.debug(f"Onboard method: {module_params['onboard_method'].lower()}")
-
-    # Get cdFMC details
-    cdfmc = get_cdfmc(http_session, endpoint)
-    cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
-
-    # TODO: Get these from the fmc collection when it supports cdFMC
-    access_policy = get_cdfmc_access_policy_list(
-        http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
-        access_list_name=module_params['access_control_policy'])
-    ftd_device = FTDModel(
-        name=module_params['name'],
-        associatedDeviceUid=cdfmc['uid'],
-        metadata=FTDMetaData(
-            accessPolicyName=access_policy['items'][0]['name'],
-            accessPolicyUuid=access_policy['items'][0]['id'],
-            license_caps=','.join(module_params['license']),
-            performanceTier=module_params['performance_tier']
-        )
-    )
-    logger.debug(f"Onboard method: {module_params['onboard_method'].lower()}")
-    if module_params['onboard_method'].lower() == "ltp":
-        add_ftd_ltp(module_params, http_session, endpoint, ftd_device)
-    else:
-        # Create the device
-        new_device = CDORequests.post(http_session, f"https://{endpoint}",
-                                      path=CDOAPI.DEVICES.value, data=ftd_device.asdict())
-
-        # Wait for it to be created and return the specific device model
-        result = new_ftd_polling(module_params, http_session, endpoint, new_device['uid'])
-
-        # Enable FTD onboarding on the cdFMC using the specific device uid
-        update_ftd_device(http_session, endpoint, result['uid'], {"queueTriggerState": "INITIATE_FTDC_ONBOARDING"})
-        result = CDORequests.get(http_session, f"https://{endpoint}",
-                                 path=f"{CDOAPI.DEVICES.value}/{new_device['uid']}")
-
-    # Get onboarding FTD CLI commands
-    return f"{module_params['name']} CLI Command: {result['metadata']['generatedCommand']}"
 
 
 def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: str):
@@ -433,7 +357,7 @@ def main():
     )
 
     module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
-                           REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE)
+                           REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE, required_if=REQUIRED_IF)
 
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
     http_session = CDORequests.create_session(module.params.get('api_key'), __version__)
@@ -444,9 +368,6 @@ def main():
     elif module.params.get('add_asa_ios') is not None:
         result['stdout'] = add_asa_ios(module.params.get('add_asa_ios'),  http_session, endpoint)
         result['changed'] = True
-    elif module.params.get('add_ftd') is not None:
-        result['stdout'] = add_ftd(module.params.get('add_ftd'), http_session, endpoint)
-        result['changed'] = True
     elif module.params.get('delete') is not None:
         result['stdout'] = delete_device(module.params.get('delete'), http_session, endpoint)
         result['changed'] = True
@@ -454,5 +375,4 @@ def main():
 
 
 if __name__ == '__main__':
-    logger.warning("Getting started....")
     main()

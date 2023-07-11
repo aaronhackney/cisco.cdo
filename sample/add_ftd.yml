@@ -3,7 +3,7 @@
   hosts: localhost
   tasks:
     - name: Add FTD to CDO and cdFMC
-      cisco.cdo.cdo_inventory:
+      cisco.cdo.add_ftd:
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
         region: 'us'
         add_ftd:
