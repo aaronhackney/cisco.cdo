@@ -7,11 +7,10 @@
         api_key: "{{ lookup('ansible.builtin.env', 'CDO_API_KEY') }}"
         region: 'us'
         add_ftd:
-          onboard_method: 'cli'
+          onboard_method: 'ltp'
+          serial: 'JADXXXXXXXX'
           access_control_policy: 'Default Access Control Policy'
           name: 'ElPaso'
-          is_virtual: true
-          performance_tier: FTDv10
           license:
             - BASE
             - THREAT

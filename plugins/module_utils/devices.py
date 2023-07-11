@@ -25,6 +25,9 @@ class FTDMetaData:
     license_caps: str
     performanceTier: str
 
+    def asdict(self):
+        return asdict(self)
+
 
 @dataclass
 class FTDModel:
