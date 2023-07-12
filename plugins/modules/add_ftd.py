@@ -105,7 +105,7 @@ from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDO
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel, FTDMetaData
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
-    INVENTORY_ARGUMENT_SPEC,
+    ADD_FTD_SPEC,
     REQUIRED_ONE_OF,
     MUTUALLY_EXCLUSIVE,
     REQUIRED_IF
@@ -265,7 +265,7 @@ def main():
         changed=False
     )
 
-    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
+    module = AnsibleModule(argument_spec=ADD_FTD_SPEC, required_one_of=[
                            REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE, required_if=REQUIRED_IF)
 
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
