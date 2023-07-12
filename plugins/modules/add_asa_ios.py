@@ -48,7 +48,8 @@ options:
 author:
     - Aaron Hackney (@aaronhackney)
 requirements:
-  - tbd
+  - pycryptodome
+  - requests
   
 '''
 
@@ -94,7 +95,6 @@ EXAMPLES = r'''
 # fmt: off 
 from time import sleep
 from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
-from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import ASAIOSModel
@@ -107,7 +107,6 @@ from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
 )
 from ansible.module_utils.basic import AnsibleModule
 import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
-import urllib.parse
 import requests
 # fmt: on
 
@@ -149,7 +148,8 @@ def asa_credentails_polling(module_params: dict, http_session: requests.session,
         f"Credentials for device {module_params['name']} were sent but we never reached a known good state.")
 
 
-def ios_credentials_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> True:
+def ios_credentials_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
+    """ Check to see if the supplied credentials are accepted by the live device """
     for i in range(module_params['retry']):
         device = get_device(http_session, endpoint, uid)
         if device['connectivityState'] == -5:

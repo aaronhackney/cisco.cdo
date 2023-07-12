@@ -48,7 +48,8 @@ options:
 author:
     - Aaron Hackney (@aaronhackney)
 requirements:
-  - tbd
+  - pycryptodome
+  - requests
   
 '''
 
@@ -148,6 +149,7 @@ __version__ = "1.0.0"
 
 
 def find_device_for_deletion(module_params: dict, http_session: requests.session, endpoint: str):
+    """ Find the object we intend to delete """
     if module_params['device_type'].upper() == "FTD":
         extra_filter = "AND (deviceType:FTDC)"
     else:
@@ -163,6 +165,7 @@ def find_device_for_deletion(module_params: dict, http_session: requests.session
 
 
 def delete_device(module_params: dict, http_session: requests.session, endpoint: str):
+    """ Orchestrate deleting the device """
     device = find_device_for_deletion(module_params, http_session, endpoint)
     working_set(http_session, endpoint, device['uid'])
     if module_params['device_type'].upper() == "ASA" or module_params['device_type'].upper() == "IOS":
