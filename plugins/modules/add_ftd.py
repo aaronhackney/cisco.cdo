@@ -11,14 +11,11 @@ DOCUMENTATION = r'''
 ---
 module: add_ftd
 
-short_description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO).
+short_description: This module is to add inventory (FTD devices) on Cisco Defense Orchestrator (CDO).
 
 version_added: "1.0.0"
 
-description: This module is to add, modify, read, and remove inventory (devices) on Cisco Defense Orchestrator (CDO). 
-With this module, one can add, modify, read, and remove the following devices in a CDO tenant's inventory: 
-[FTD, ASA, IOS]
-
+description: This module is to add inventory (FTD devices) on Cisco Defense Orchestrator (CDO).
 options:
     api_key:
         description:
@@ -86,17 +83,6 @@ EXAMPLES = r'''
             - PLUS
       register: added_device
 '''
-
-# fmt: off 
-# Remove for publishing....
-import logging
-logger = logging.getLogger('inventory_module')
-logging.basicConfig()
-fh = logging.FileHandler('/tmp/cdo_inventory.log')
-fh.setLevel(logging.DEBUG)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fh)
-# fmt: on
 
 # fmt: off 
 from time import sleep
