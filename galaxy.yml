@@ -8,7 +8,7 @@ description: A collection for automating Cisco Defense Orchestrator
 license:
   - Apache-2.0
 license_file: 'LICENSE'
-tags: [cdo, cisco, defense, orchestrator, asa, ios, ftd]
+tags: [cdo, cisco, defense, orchestrator, asa, ios, ftd, firepower, fmc, cdfmc, security]
 dependencies: {}
 repository: http://example.com/repository
 documentation: http://docs.example.com

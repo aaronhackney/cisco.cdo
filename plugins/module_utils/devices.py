@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 
 @dataclass
@@ -35,9 +35,15 @@ class FTDModel:
     name: str
     associatedDeviceUid: str
     metadata: FTDMetaData
+    serial: str = None
+    ipv4: str = None
+    larType: str = None
     deviceType: str = "FTDC"
     model: bool = False
     state: str = 'NEW'
+    sseDeviceSerialNumberRegistration: dict = field(default_factory=dict)
+    sseEnabled: bool = None
+    tags: dict = field(default_factory=dict)
     type: str = 'devices'
 
     def asdict(self):
