@@ -11,14 +11,11 @@ DOCUMENTATION = r'''
 ---
 module: delete
 
-short_description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO).
+short_description: This module is to remove inventory (FTD, ASA, IOS devices) on Cisco Defense Orchestrator (CDO).
 
 version_added: "1.0.0"
 
-description: This module is to add, modify, read, and remove inventory (devices) on Cisco Defense Orchestrator (CDO). 
-With this module, one can add, modify, read, and remove the following devices in a CDO tenant's inventory: 
-[FTD, ASA, IOS]
-
+description: This module is to remove inventory (FTD, ASA, IOS devices) on Cisco Defense Orchestrator (CDO).
 options:
     api_key:
         description:
@@ -133,70 +130,21 @@ EXAMPLES = r'''
 '''
 
 # fmt: off 
-# Remove for publishing....
-import logging
-logger = logging.getLogger('inventory_module')
-logging.basicConfig()
-fh = logging.FileHandler('/tmp/cdo_inventory.log')
-fh.setLevel(logging.DEBUG)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fh)
-# fmt: on
-
-# fmt: off 
-from time import sleep
-from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
-from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
-from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel, FTDMetaData, ASAIOSModel
+from ansible_collections.cisco.cdo.plugins.module_utils.common import working_set, get_cdfmc, get_specific_device, inventory
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
-    INVENTORY_ARGUMENT_SPEC,
+    DELETE_SPEC,
     REQUIRED_ONE_OF,
     MUTUALLY_EXCLUSIVE,
     REQUIRED_IF
 )
 from ansible.module_utils.basic import AnsibleModule
 import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
-import urllib.parse
 import requests
-import base64
 # fmt: on
 
 __version__ = "1.0.0"
-
-
-def get_cdfmc(http_session: requests.session, endpoint: str):
-    """ Get the cdFMC object for this tenant if one exists """
-    query = CDOQuery.get_cdfmc_query()
-    response = CDORequests.get(
-        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}?q={query['q']}")
-    if len(response) == 0:
-        raise cdo_errors.DeviceNotFound("A cdFMC was not found in this tenant")
-    return response[0]
-
-
-def working_set(http_session: requests.session, endpoint: str, uid: str):
-    data = {"selectedModelObjects": [{"modelClassKey": "targets/devices", "uuids": [uid]}],
-            "workingSetFilterAttributes": []}
-    return CDORequests.post(http_session, f"https://{endpoint}", path=f"{CDOAPI.WORKSET.value}", data=data)
-
-
-def get_specific_device(http_session: requests.session, endpoint: str, uid: str) -> str:
-    """ Given a device uid, retreive the device specific details """
-    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid)
-    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
-
-
-def inventory(module_params: dict, http_session: requests.session, endpoint: str, extra_filter: str = None,
-              limit: int = 50, offset: int = 0) -> str:
-    """ Get CDO inventory """
-    # TODO: Support paging
-    query = CDOQuery.get_inventory_query(module_params, extra_filter=extra_filter)
-    q = urllib.parse.quote_plus(query['q'])
-    r = urllib.parse.quote_plus(query['r'])
-    path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
-    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
 def find_device_for_deletion(module_params: dict, http_session: requests.session, endpoint: str):
@@ -242,7 +190,7 @@ def main():
         changed=False
     )
 
-    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
+    module = AnsibleModule(argument_spec=DELETE_SPEC, required_one_of=[
                            REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE, required_if=REQUIRED_IF)
 
     endpoint = CDORegions.get_endpoint(module.params.get('region'))

@@ -11,14 +11,11 @@ DOCUMENTATION = r'''
 ---
 module: add_ftd
 
-short_description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO).
+short_description: This module is to add inventory (FTD devices) on Cisco Defense Orchestrator (CDO).
 
 version_added: "1.0.0"
 
-description: This module is to add, modify, read, and remove inventory (devices) on Cisco Defense Orchestrator (CDO). 
-With this module, one can add, modify, read, and remove the following devices in a CDO tenant's inventory: 
-[FTD, ASA, IOS]
-
+description: This module is to add inventory (FTD devices) on Cisco Defense Orchestrator (CDO).
 options:
     api_key:
         description:
@@ -88,24 +85,13 @@ EXAMPLES = r'''
 '''
 
 # fmt: off 
-# Remove for publishing....
-import logging
-logger = logging.getLogger('inventory_module')
-logging.basicConfig()
-fh = logging.FileHandler('/tmp/cdo_inventory.log')
-fh.setLevel(logging.DEBUG)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fh)
-# fmt: on
-
-# fmt: off 
 from time import sleep
 from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel, FTDMetaData
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
-    INVENTORY_ARGUMENT_SPEC,
+    ADD_FTD_SPEC,
     REQUIRED_ONE_OF,
     MUTUALLY_EXCLUSIVE,
     REQUIRED_IF
@@ -265,7 +251,7 @@ def main():
         changed=False
     )
 
-    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
+    module = AnsibleModule(argument_spec=ADD_FTD_SPEC, required_one_of=[
                            REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE, required_if=REQUIRED_IF)
 
     endpoint = CDORegions.get_endpoint(module.params.get('region'))

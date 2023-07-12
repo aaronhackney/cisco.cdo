@@ -11,14 +11,11 @@ DOCUMENTATION = r'''
 ---
 module: add_asa_ios
 
-short_description: This module is to add, modify, read, and remove devivces on Cisco Defense Orchestrator (CDO).
+short_description: This module is to add inventory (ASA, IOS devices) on Cisco Defense Orchestrator (CDO).
 
 version_added: "1.0.0"
 
-description: This module is to add, modify, read, and remove inventory (devices) on Cisco Defense Orchestrator (CDO). 
-With this module, one can add, modify, read, and remove the following devices in a CDO tenant's inventory: 
-[FTD, ASA, IOS]
-
+description: This module is to add inventory (ASA, IOS devices) on Cisco Defense Orchestrator (CDO). 
 options:
     api_key:
         description:
@@ -95,25 +92,15 @@ EXAMPLES = r'''
 '''
 
 # fmt: off 
-# Remove for publishing....
-import logging
-logger = logging.getLogger('inventory_module')
-logging.basicConfig()
-fh = logging.FileHandler('/tmp/cdo_inventory.log')
-fh.setLevel(logging.DEBUG)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fh)
-# fmt: on
-
-# fmt: off 
 from time import sleep
 from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
 from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import ASAIOSModel
+from ansible_collections.cisco.cdo.plugins.module_utils.common import get_lar_list, get_specific_device, get_device
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
-    INVENTORY_ARGUMENT_SPEC,
+    ADD_ASA_IOS_SPEC,
     REQUIRED_ONE_OF,
     MUTUALLY_EXCLUSIVE,
     REQUIRED_IF
@@ -155,7 +142,7 @@ def asa_credentails_polling(module_params: dict, http_session: requests.session,
         if result['state'] == "BAD_CREDENTIALS":
             raise cdo_errors.CredentialsFailure(
                 f"Credentials provided for device {module_params['name']} were rejected.")
-        elif result['state'] == "PENDING_GET_CONFIG_DONE" or result['state'] == "DONE":
+        elif result['state'] == "PENDING_GET_CONFIG_DONE" or result['state'] == "DONE" or result['state'] == "IDLE":
             return True
         sleep(module_params['delay'])
     raise cdo_errors.APIError(
@@ -174,35 +161,9 @@ def ios_credentials_polling(module_params: dict, http_session: requests.session,
     raise cdo_errors.CredentialsFailure(f"Device remains in connectivity state {device['connectivityState']}")
 
 
-def get_lar_list(module_params: dict, http_session: requests.session, endpoint: str):
-    """ Return a list of lars (SDC/CDG from CDO) """
-    path = CDOAPI.LARS.value
-    query = CDOQuery.get_lar_query(module_params)
-    if query is not None:
-        path = f"{path}?q={urllib.parse.quote_plus(query)}"
-    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
-
-
-def get_device(http_session: requests.session, endpoint: str, uid: str):
-    """ Given a device uid, retreive the specific device model of the device """
-    return CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}")
-
-
 def update_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
     """ Update an eixsting device's attributes """
     return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}", data=data)
-
-
-def working_set(http_session: requests.session, endpoint: str, uid: str):
-    data = {"selectedModelObjects": [{"modelClassKey": "targets/devices", "uuids": [uid]}],
-            "workingSetFilterAttributes": []}
-    return CDORequests.post(http_session, f"https://{endpoint}", path=f"{CDOAPI.WORKSET.value}", data=data)
-
-
-def get_specific_device(http_session: requests.session, endpoint: str, uid: str) -> str:
-    """ Given a device uid, retreive the device specific details """
-    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid)
-    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
 
 
 def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: str):
@@ -259,7 +220,7 @@ def main():
         changed=False
     )
 
-    module = AnsibleModule(argument_spec=INVENTORY_ARGUMENT_SPEC, required_one_of=[
+    module = AnsibleModule(argument_spec=ADD_ASA_IOS_SPEC, required_one_of=[
                            REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE, required_if=REQUIRED_IF)
 
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
