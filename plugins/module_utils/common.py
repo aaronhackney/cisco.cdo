@@ -5,7 +5,7 @@ __metaclass__ = type
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORequests
-from ansible_collections.cisco.cdo.plugins.module_utils.errors import DeviceNotFound
+from ansible_collections.cisco.cdo.plugins.module_utils.errors import DeviceNotFound, ObjectNotFound
 import urllib.parse
 import requests
 
@@ -48,6 +48,7 @@ def get_cdfmc(http_session: requests.session, endpoint: str):
 
 
 def working_set(http_session: requests.session, endpoint: str, uid: str):
+    """ Return a workingset object"""
     data = {"selectedModelObjects": [{"modelClassKey": "targets/devices", "uuids": [uid]}],
             "workingSetFilterAttributes": []}
     return CDORequests.post(http_session, f"https://{endpoint}", path=f"{CDOAPI.WORKSET.value}", data=data)
@@ -62,3 +63,17 @@ def inventory(module_params: dict, http_session: requests.session, endpoint: str
     r = urllib.parse.quote_plus(query['r'])
     path = f"{CDOAPI.DEVICES.value}?limit={limit}&offset={offset}&q={q}&resolve={r}"
     return CDORequests.get(http_session, f"https://{endpoint}", path=path)
+
+
+def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, cdfmc_host: str, domain_uid: str,
+                                 limit: int = 50, offset: int = 0, access_list_name=None):
+    """ Given the domain uuid of the cdFMC, retreive the list of access policies """
+    # TODO: use the FMC collection to retrieve this
+    http_session.headers['fmc-hostname'] = cdfmc_host
+    path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
+    path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
+    response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
+    if response['paging']['count'] == 0:
+        if access_list_name is not None:
+            raise ObjectNotFound(f"Access Policy {access_list_name} not found on cdFMC.")
+    return response

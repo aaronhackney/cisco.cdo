@@ -37,7 +37,8 @@ options:
 author:
     - Aaron Hackney (@aaronhackney)
 requirements:
-  - tbd
+  - pycryptodome
+  - requests
   
 '''
 
@@ -90,6 +91,8 @@ from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel, FTDMetaData
+from ansible_collections.cisco.cdo.plugins.module_utils.common import inventory_count, get_device, get_cdfmc
+from ansible_collections.cisco.cdo.plugins.module_utils.common import get_cdfmc_access_policy_list, get_specific_device
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     ADD_FTD_SPEC,
     REQUIRED_ONE_OF,
@@ -98,7 +101,6 @@ from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
 )
 from ansible.module_utils.basic import AnsibleModule
 import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
-import urllib.parse
 import requests
 import base64
 # fmt: on
@@ -117,55 +119,13 @@ def new_ftd_polling(module_params: dict, http_session: requests.session, endpoin
     raise cdo_errors.AddDeviceFailure(f"Failed to add FTD {module_params['name']}")
 
 
-def get_cdfmc(http_session: requests.session, endpoint: str):
-    """ Get the cdFMC object for this tenant if one exists """
-    query = CDOQuery.get_cdfmc_query()
-    response = CDORequests.get(
-        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}?q={query['q']}")
-    if len(response) == 0:
-        raise cdo_errors.DeviceNotFound("A cdFMC was not found in this tenant")
-    return response[0]
-
-
-def get_cdfmc_access_policy_list(http_session: requests.session, endpoint: str, cdfmc_host: str, domain_uid: str,
-                                 limit: int = 50, offset: int = 0, access_list_name=None):
-    """ Given the domain uuid of the cdFMC, retreive the list of access policies """
-    # TODO: use the FMC collection to retrieve this
-    http_session.headers['fmc-hostname'] = cdfmc_host
-    path = f"{CDOAPI.FMC_ACCESS_POLICY.value.replace('{domain_uid}', domain_uid)}"
-    path = f"{path}?{CDOQuery.get_cdfmc_policy_query(limit, offset, access_list_name)}"
-    response = CDORequests.get(http_session, f"https://{endpoint}", path=path)
-    if response['paging']['count'] == 0:
-        if access_list_name is not None:
-            raise cdo_errors.ObjectNotFound(f"Access Policy {access_list_name} not found on cdFMC.")
-    return response
-
-
-def get_device(http_session: requests.session, endpoint: str, uid: str):
-    """ Given a device uid, retreive the specific device model of the device """
-    return CDORequests.get(http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}/{uid}")
-
-
 def update_ftd_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
+    """ Update an FTD object """
     return CDORequests.put(http_session, f"https://{endpoint}", path=f"{CDOAPI.FTDS.value}/{uid}", data=data)
-
-
-def get_specific_device(http_session: requests.session, endpoint: str, uid: str) -> str:
-    """ Given a device uid, retreive the device specific details """
-    path = CDOAPI.SPECIFIC_DEVICE.value.replace('{uid}', uid)
-    return CDORequests.get(http_session, f"https://{endpoint}", path=path)
-
-
-def inventory_count(http_session: requests.session, endpoint: str, filter: str = None):
-    """Given a filter criteria, return the number of devices that match the criteria"""
-    return CDORequests.get(
-        http_session, f"https://{endpoint}", path=f"{CDOAPI.DEVICES.value}?agg=count&q={filter}"
-    )['aggregationQueryResult']
 
 
 def add_ftd_ltp(module_params: dict, http_session: requests.session, endpoint: str, ftd_device: FTDModel, fmc_uid: str):
     """ Onboard an FTD to cdFMC using LTP (serial number onboarding)"""
-    # 1. Check to see if the serial number has already been claimed
     if (not inventory_count(http_session, endpoint, filter=f"serial:{module_params['serial']}") and
             not inventory_count(http_session, endpoint, filter=f"name:{module_params['serial']}")):
         base64.b64encode(f'{{"nkey": "{module_params["password"]}"}}'.encode('ascii')).decode('ascii')
@@ -203,7 +163,7 @@ def add_ftd_ltp(module_params: dict, http_session: requests.session, endpoint: s
 
 
 def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
-    # Get cdFMC details
+    """ Add an FTD to CDO via CLI or LTP process """
     cdfmc = get_cdfmc(http_session, endpoint)
     cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
     # TODO: Get these from the fmc collection when it supports cdFMC

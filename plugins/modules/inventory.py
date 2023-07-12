@@ -37,7 +37,8 @@ options:
 author:
     - Aaron Hackney (@aaronhackney)
 requirements:
-  - tbd
+  - pycryptodome
+  - requests
   
 '''
 
@@ -60,9 +61,6 @@ EXAMPLES = r'''
 '''
 
 # fmt: off 
-from time import sleep
-from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
-from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.common import inventory
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
@@ -72,8 +70,6 @@ from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     REQUIRED_IF
 )
 from ansible.module_utils.basic import AnsibleModule
-import urllib.parse
-import requests
 
 # fmt: on
 
