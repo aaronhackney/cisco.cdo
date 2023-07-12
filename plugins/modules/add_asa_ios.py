@@ -1,7 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 #
-# Copyright: (c) 2018, Terry Jones <terry.jones@example.org>
 # Apache License v2.0+ (see LICENSE or https://www.apache.org/licenses/LICENSE-2.0)
 
 from __future__ import (absolute_import, division, print_function)
@@ -91,7 +90,6 @@ EXAMPLES = r'''
           ignore_cert: true
       register: added_device    
 '''
-
 # fmt: off 
 from time import sleep
 from ansible_collections.cisco.cdo.plugins.module_utils.crypto import CDOCrypto
@@ -99,14 +97,31 @@ from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDO
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import ASAIOSModel
 from ansible_collections.cisco.cdo.plugins.module_utils.common import get_lar_list, get_specific_device, get_device
+
+from ansible_collections.cisco.cdo.plugins.module_utils.errors import (
+    SDCNotFound,
+    InvalidCertificate,
+    DeviceUnreachable,
+    DuplicateObject,
+    APIError,
+    CredentialsFailure
+)
+from ansible_collections.cisco.cdo.plugins.module_utils.errors import (
+    SDCNotFound,
+    InvalidCertificate,
+    DeviceUnreachable,
+    APIError,
+    CredentialsFailure
+)
+
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     ADD_ASA_IOS_SPEC,
     REQUIRED_ONE_OF,
     MUTUALLY_EXCLUSIVE,
     REQUIRED_IF
 )
+
 from ansible.module_utils.basic import AnsibleModule
-import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
 import requests
 # fmt: on
 
@@ -123,11 +138,11 @@ def connectivity_poll(module_params: dict, http_session: requests.session, endpo
                 return True
             else:
                 # TODO: Delete the device we just attempted to add....
-                raise cdo_errors.InvalidCertificate(f"{device['connectivityError']}")
+                raise InvalidCertificate(f"{device['connectivityError']}")
         if device['connectivityState'] > -1 or device['status'] == "WAITING_FOR_DATA":
             return True
         sleep(module_params['delay'])
-    raise cdo_errors.DeviceUnreachable(
+    raise DeviceUnreachable(
         f"Device {module_params['name']} was not reachable at "
         f"{module_params['ipv4']}:{module_params['port']} by CDO"
     )
@@ -139,12 +154,12 @@ def asa_credentails_polling(module_params: dict, http_session: requests.session,
         result = CDORequests.get(
             http_session, f"https://{endpoint}", path=f"{CDOAPI.ASA_CONFIG.value}/{uid}")
         if result['state'] == "BAD_CREDENTIALS":
-            raise cdo_errors.CredentialsFailure(
+            raise CredentialsFailure(
                 f"Credentials provided for device {module_params['name']} were rejected.")
         elif result['state'] == "PENDING_GET_CONFIG_DONE" or result['state'] == "DONE" or result['state'] == "IDLE":
             return True
         sleep(module_params['delay'])
-    raise cdo_errors.APIError(
+    raise APIError(
         f"Credentials for device {module_params['name']} were sent but we never reached a known good state.")
 
 
@@ -155,10 +170,10 @@ def ios_credentials_polling(module_params: dict, http_session: requests.session,
         if device['connectivityState'] == -5:
             sleep(module_params['delay'])
         elif device['connectivityError'] is not None:
-            raise cdo_errors.CredentialsFailure(device['connectivityError'])
+            raise CredentialsFailure(device['connectivityError'])
         elif device['connectivityState'] > 0:
             return True
-    raise cdo_errors.CredentialsFailure(f"Device remains in connectivity state {device['connectivityState']}")
+    raise CredentialsFailure(f"Device remains in connectivity state {device['connectivityState']}")
 
 
 def update_device(http_session: requests.session, endpoint: str, uid: str, data: dict):
@@ -171,7 +186,7 @@ def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: s
 
     lar_list = get_lar_list(module_params, http_session, endpoint)
     if len(lar_list) != 1:
-        raise (cdo_errors.SDCNotFound(f"Could not find SDC"))
+        raise (SDCNotFound(f"Could not find SDC"))
     else:
         lar = lar_list[0]
 
@@ -187,9 +202,12 @@ def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: s
     if module_params['ignore_cert']:
         asa_ios_device.ignore_cert = False
 
-    path = CDOAPI.DEVICES.value
-    device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=asa_ios_device.asdict())
-    connectivity_poll(module_params, http_session, endpoint, device['uid'])
+    try:
+        path = CDOAPI.DEVICES.value
+        device = CDORequests.post(http_session, f"https://{endpoint}", path=path, data=asa_ios_device.asdict())
+        connectivity_poll(module_params, http_session, endpoint, device['uid'])
+    except DuplicateObject as e:
+        raise e
 
     creds_crypto = CDOCrypto.encrypt_creds(module_params['username'], module_params['password'], lar)
 
@@ -219,14 +237,28 @@ def main():
         failed=False,
         changed=False
     )
-
     module = AnsibleModule(argument_spec=ADD_ASA_IOS_SPEC, required_one_of=[
                            REQUIRED_ONE_OF], mutually_exclusive=MUTUALLY_EXCLUSIVE, required_if=REQUIRED_IF)
-
     endpoint = CDORegions.get_endpoint(module.params.get('region'))
     http_session = CDORequests.create_session(module.params.get('api_key'), __version__)
-    result['stdout'] = add_asa_ios(module.params.get('add_asa_ios'),  http_session, endpoint)
-    result['changed'] = True
+    module_params = module.params.get('add_asa_ios')
+
+    try:
+        result['stdout'] = add_asa_ios(module_params,  http_session, endpoint)
+        result['changed'] = True
+    except SDCNotFound as e:
+        result['stderr'] = f"ERROR: {e.message}"
+    except InvalidCertificate as e:
+        result['stderr'] = f"ERROR: {e.message}"
+    except DeviceUnreachable as e:
+        result['stderr'] = f"ERROR: {e.message}"
+    except CredentialsFailure as e:
+        result['stderr'] = f"ERROR: {e.message}"
+    except DuplicateObject as e:
+        result['stderr'] = f"ERROR: {e.message}"
+    except APIError as e:
+        result['stderr'] = f"ERROR: {e.message}"
+
     module.exit_json(**result)
 
 

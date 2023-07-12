@@ -19,6 +19,8 @@
             - MALWARE
             - PLUS
       register: added_device
+      failed_when: added_device.stderr is defined and "'ERROR' in added_device.stderr"
+
     - name: Print results
       ansible.builtin.debug:
         msg:
