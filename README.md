@@ -49,7 +49,7 @@ collections:
 ```
 
 ## Contributing to this collection
-We welcome community contributions to this collection. If you find problems, please open an issue or create a PR against the [Cisco Defense Orchestrator collection repository](https://https://github.com/cisco-lockhart/cdo_public/cisco.cdo). See [Contributing to Ansible-maintained collections](https://docs.ansible.com/ansible/devel/community/contributing_maintained_collections.html#contributing-maintained-collections) for complete details.
+We welcome community contributions to this collection. If you find problems, please open an issue or create a PR against the [Cisco Defense Orchestrator collection repository](https://github.com/CiscoDevNet/ansible-cisco-cdo). See [Contributing to Ansible-maintained collections](https://docs.ansible.com/ansible/devel/community/contributing_maintained_collections.html#contributing-maintained-collections) for complete details.
 
 ### Code of Conduct
 This collection follows the Ansible project's
@@ -58,7 +58,7 @@ Please read and familiarize yourself with this document.
 
 ## Release notes
 <!--Add a link to a changelog.md file or an external docsite to cover this information. -->
-Release notes are available [here](https://https://github.com/cisco-lockhart/cdo_public/cisco.cdo/CHANGELOG.rst).
+Release notes are available [here](https://github.com/CiscoDevNet/ansible-cisco-cdo/CHANGELOG.rst).
 
 ## Roadmap
 Additional modules will be added in future releases. These include:
