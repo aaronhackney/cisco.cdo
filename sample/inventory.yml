@@ -9,6 +9,7 @@
         inventory:
           device_type: "all"
       register: inventory
+      failed_when: (inventory.stderr is defined) and (inventory.stderr | length > 0)
 
     - name: Print All Results for all devices, all fields
       ansible.builtin.debug:

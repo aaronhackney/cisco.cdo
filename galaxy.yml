@@ -3,17 +3,39 @@ name: cdo
 version: 1.0.0
 readme: README.md
 authors:
-  - Aaron Hackney <aahackne@cisco.com>
+  - Aaron Hackney (@aaronhackney)
 description: A collection for automating Cisco Defense Orchestrator
 license:
   - Apache-2.0
 license_file: 'LICENSE'
-tags: [cdo, cisco, defense, orchestrator, asa, ios, ftd, firepower, fmc, cdfmc, security]
+tags:
+- cdo
+- cisco
+- defense
+- orchestrator
+- asa
+- ios
+- ftd
+- firepower
+- fmc
+- cdfmc
+- security
+build_ignore:
+- '*tar.gz'
+- '*.DS_Store'
+- '*.json'
+- 'venv*'
+- '.vscode'
+- '.gitignore'
+- '.env'
+- '.github'
+- 'tests/output/'
+- 'galaxy.yml'
+- '*.pyc'
+- '.git'
 dependencies: {}
-repository: http://example.com/repository
-documentation: http://docs.example.com
-homepage: http://example.com
-issues: http://example.com/issue/tracker
-build_ignore: ['galaxy.yml', '*.pyc', '.git', '.gitignore']
-# manifest: null
+repository: https://github.com/CiscoDevNet/ansible-cisco-cdo
+documentation: https://github.com/CiscoDevNet/ansible-cisco-cdo/docs
+homepage: ''
+issues: https://github.com/CiscoDevNet/ansible-cisco-cdo/issues
 

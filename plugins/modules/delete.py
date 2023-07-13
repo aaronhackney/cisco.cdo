@@ -134,6 +134,7 @@ EXAMPLES = r'''
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.common import working_set, get_cdfmc, get_specific_device, inventory
+from ansible_collections.cisco.cdo.plugins.module_utils._version import __version__
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     DELETE_SPEC,
     REQUIRED_ONE_OF,
@@ -144,8 +145,6 @@ from ansible.module_utils.basic import AnsibleModule
 import ansible_collections.cisco.cdo.plugins.module_utils.errors as cdo_errors
 import requests
 # fmt: on
-
-__version__ = "1.0.0"
 
 
 def find_device_for_deletion(module_params: dict, http_session: requests.session, endpoint: str):

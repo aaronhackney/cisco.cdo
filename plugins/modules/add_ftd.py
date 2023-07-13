@@ -6,16 +6,6 @@
 
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
-# fmt: off 
-# Remove for publishing....
-import logging
-logger = logging.getLogger('inventory_module')
-logging.basicConfig()
-fh = logging.FileHandler('/tmp/cdo_inventory.log')
-fh.setLevel(logging.DEBUG)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fh)
-# fmt: on
 
 
 DOCUMENTATION = r'''
@@ -97,26 +87,25 @@ EXAMPLES = r'''
 '''
 
 # fmt: off 
+import requests
+import base64
 from time import sleep
-from ansible_collections.cisco.cdo.plugins.module_utils.query import CDOQuery
 from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDOAPI
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import FTDModel, FTDMetaData
 from ansible_collections.cisco.cdo.plugins.module_utils.common import inventory_count, get_device, get_cdfmc
 from ansible_collections.cisco.cdo.plugins.module_utils.common import get_cdfmc_access_policy_list, get_specific_device
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.cisco.cdo.plugins.module_utils.errors import DeviceNotFound, AddDeviceFailure, DuplicateObject, ObjectNotFound
+from ansible_collections.cisco.cdo.plugins.module_utils._version import __version__
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     ADD_FTD_SPEC,
     REQUIRED_ONE_OF,
     MUTUALLY_EXCLUSIVE,
     REQUIRED_IF
 )
-from ansible.module_utils.basic import AnsibleModule
-from ansible_collections.cisco.cdo.plugins.module_utils.errors import DeviceNotFound, AddDeviceFailure, DuplicateObject
-import requests
-import base64
-# fmt: on
 
-__version__ = "1.0.0"
+# fmt: on
 
 
 def new_ftd_polling(module_params: dict, http_session: requests.session, endpoint: str, uid: str):
@@ -166,12 +155,19 @@ def add_ftd_ltp(module_params: dict, http_session: requests.session, endpoint: s
 
 def add_ftd(module_params: dict, http_session: requests.session, endpoint: str):
     """ Add an FTD to CDO via CLI or LTP process """
-    cdfmc = get_cdfmc(http_session, endpoint)
-    cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
+
+    try:
+        cdfmc = get_cdfmc(http_session, endpoint)
+        cdfmc_specific_device = get_specific_device(http_session, endpoint, cdfmc['uid'])
+        access_policy = get_cdfmc_access_policy_list(
+            http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
+            access_list_name=module_params['access_control_policy'])
+    except DeviceNotFound as e:
+        raise e
+    except ObjectNotFound as e:
+        raise e
+
     # TODO: Get these from the fmc collection when it supports cdFMC
-    access_policy = get_cdfmc_access_policy_list(
-        http_session, endpoint, cdfmc['host'], cdfmc_specific_device['domainUid'],
-        access_list_name=module_params['access_control_policy'])
 
     ftd_device = FTDModel(
         name=module_params['name'],
@@ -222,7 +218,8 @@ def main():
         result['stderr'] = f"ERROR: {e.message}"
     except DeviceNotFound as e:
         result['stderr'] = f"ERROR: {e.message}"
-
+    except ObjectNotFound as e:
+        result['stderr'] = f"ERROR: {e.message}"
     module.exit_json(**result)
 
 

@@ -49,7 +49,7 @@ class CDOAPIWrapper(object):
 
 class CDORequests:
     @staticmethod
-    def create_session(token: str, version) -> str:
+    def create_session(token: str, version: str) -> str:
         """Helper function to set the auth token and accept headers in the API request"""
         http_session = requests.Session()
         http_session.headers = {"Authorization": f"Bearer {token.strip()}", "Accept": "*/*",
