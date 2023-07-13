@@ -62,6 +62,7 @@ EXAMPLES = r'''
 
 # fmt: off 
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
+from ansible_collections.cisco.cdo.plugins.module_utils._version import __version__
 from ansible_collections.cisco.cdo.plugins.module_utils.common import inventory
 from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
     INVENTORY_ARGUMENT_SPEC,
@@ -72,8 +73,6 @@ from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
 from ansible.module_utils.basic import AnsibleModule
 
 # fmt: on
-
-__version__ = "1.0.0"
 
 
 def main():

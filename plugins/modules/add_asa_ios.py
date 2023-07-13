@@ -97,6 +97,7 @@ from ansible_collections.cisco.cdo.plugins.module_utils.api_endpoints import CDO
 from ansible_collections.cisco.cdo.plugins.module_utils.requests import CDORegions, CDORequests
 from ansible_collections.cisco.cdo.plugins.module_utils.devices import ASAIOSModel
 from ansible_collections.cisco.cdo.plugins.module_utils.common import get_lar_list, get_specific_device, get_device
+from ansible_collections.cisco.cdo.plugins.module_utils._version import __version__
 
 from ansible_collections.cisco.cdo.plugins.module_utils.errors import (
     SDCNotFound,
@@ -124,8 +125,6 @@ from ansible_collections.cisco.cdo.plugins.module_utils.args_common import (
 from ansible.module_utils.basic import AnsibleModule
 import requests
 # fmt: on
-
-__version__ = "1.0.0"
 
 
 def connectivity_poll(module_params: dict, http_session: requests.session, endpoint: str, uid: str) -> bool:
@@ -211,7 +210,6 @@ def add_asa_ios(module_params: dict, http_session: requests.session, endpoint: s
 
     creds_crypto = CDOCrypto.encrypt_creds(module_params['username'], module_params['password'], lar)
 
-    # Get UID of specific device, encrypt crednetials, send crendtials to SDC
     if module_params['device_type'].upper() == "ASA":
         creds_crypto['state'] = "CERT_VALIDATED"
         specific_device = get_specific_device(http_session, endpoint, device['uid'])
